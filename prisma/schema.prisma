@@ -1,13 +1,413 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  RECRUITER
+  HIRING_MANAGER
+}
+
+enum ResumeFileType {
+  PDF
+  DOCX
+}
+
+enum ParseStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum ApplicationStatus {
+  DRAFT
+  APPLIED
+  SCREENING
+  SHORTLISTED
+  INTERVIEWING
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+enum EvaluationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum CriterionName {
+  SKILLS_MATCH
+  EXPERIENCE_RELEVANCE
+  PROJECT_RELEVANCE
+  EDUCATION_CERTIFICATION
+  KEYWORD_DOMAIN_ALIGNMENT
+}
+
+enum SkillMatchType {
+  MATCHED
+  MISSING
+  RELATED
+}
+
+enum JobSkillType {
+  REQUIRED
+  PREFERRED
+}
+
+enum CandidateIdentityConfidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ─────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  fullName  String?
+  role      UserRole @default(RECRUITER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdJobs              JobDescription[]   @relation("JobDescriptionCreatedBy")
+  createdApplications      Application[]      @relation("ApplicationCreatedBy")
+  createdEvaluations       Evaluation[]       @relation("EvaluationCreatedBy")
+  createdEvaluationConfigs EvaluationConfig[] @relation("EvaluationConfigCreatedBy")
+}
+
+// ─────────────────────────────────────────────
+// CANDIDATE & RESUME
+// ─────────────────────────────────────────────
+
+model Candidate {
+  id                 String                      @id @default(cuid())
+  fullName           String?
+  primaryEmail       String?
+  primaryPhone       String?
+  linkedinUrl        String?
+  portfolioUrl       String?
+  githubUrl          String?
+  location           String?
+  latestHeadline     String?
+  summary            String?
+  identityConfidence CandidateIdentityConfidence @default(LOW)
+  // Aggregated parsed profile across resumes — used for cross-resume reuse.
+  // Updated each time a new resume is successfully parsed.
+  normalizedProfile  Json?
+  notes              String?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  resumes      Resume[]
+  applications Application[]
+
+  @@index([primaryEmail])
+  @@index([primaryPhone])
+  @@index([fullName])
+}
+
+model Resume {
+  id             String         @id @default(cuid())
+  candidateId    String
+  fileName       String
+  originalFileUrl String
+  storageKey     String?
+  fileType       ResumeFileType
+  fileSizeBytes  Int?
+  // SHA-256 checksum — used to detect duplicate uploads.
+  checksum       String?
+  rawText        String?
+  // Structured JSON extracted from CV.
+  // Shape: { personal, summary, skills[], education[], experience[], projects[], certifications[], achievements[], languages[] }
+  parsedData     Json?
+  parseStatus    ParseStatus    @default(PENDING)
+  parserVersion  String?
+  parsingError   String?
+  uploadedAt     DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  candidate    Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([candidateId])
+  @@index([parseStatus])
+  @@index([checksum])
+}
+
+// ─────────────────────────────────────────────
+// JOB DESCRIPTION
+// ─────────────────────────────────────────────
+
+model JobDescription {
+  id             String      @id @default(cuid())
+  createdById    String?
+  title          String
+  companyName    String?
+  department     String?
+  location       String?
+  employmentType String?
+  seniority      String?
+  rawText        String
+  // Structured JSON extracted from JD.
+  // Shape: { responsibilities[], requirements[], niceToHave[], minExperienceYears, educationRequirement, domainKeywords[] }
+  parsedData     Json?
+  parserVersion  String?
+  parseStatus    ParseStatus @default(PENDING)
+  parsingError   String?
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  createdBy         User?              @relation("JobDescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  applications      Application[]
+  skills            JobSkill[]
+  evaluationConfigs EvaluationConfig[]
+
+  @@index([createdById])
+  @@index([title])
+  @@index([companyName])
+  @@index([parseStatus])
+}
+
+// Structured skills extracted from a JD.
+// Source of truth for skill matching — preferred over parsing parsedData.Json at query time.
+model JobSkill {
+  id               String       @id @default(cuid())
+  jobDescriptionId String
+  name             String
+  normalizedName   String?
+  type             JobSkillType
+  isCore           Boolean      @default(false)
+  // Optional hint to scoring engine — overrides default criterion weight for this skill.
+  weightHint       Float?
+  createdAt        DateTime     @default(now())
+
+  jobDescription JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([jobDescriptionId])
+  @@index([name])
+  @@index([normalizedName])
+}
+
+// ─────────────────────────────────────────────
+// APPLICATION
+// ─────────────────────────────────────────────
+
+// Represents a candidate applying to a specific JD with a specific resume.
+// resumeId is required and must belong to the candidate — enforced at application layer.
+model Application {
+  id               String            @id @default(cuid())
+  candidateId      String
+  jobDescriptionId String
+  resumeId         String
+  createdById      String?
+  status           ApplicationStatus @default(APPLIED)
+  source           String?
+  appliedAt        DateTime          @default(now())
+  lastActivityAt   DateTime?
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  candidate      Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobDescription JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+  // onDelete: Restrict — do not allow deleting a resume that is tied to an application.
+  resume         Resume         @relation(fields: [resumeId], references: [id], onDelete: Restrict)
+  createdBy      User?          @relation("ApplicationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  evaluations    Evaluation[]
+  events         ApplicationEvent[]
+
+  @@index([candidateId])
+  @@index([jobDescriptionId])
+  @@index([resumeId])
+  @@index([createdById])
+  @@index([status])
+}
+
+// Audit log for application lifecycle changes.
+// eventType examples: "STATUS_CHANGED", "EVALUATION_COMPLETED", "NOTE_ADDED"
+model ApplicationEvent {
+  id            String   @id @default(cuid())
+  applicationId String
+  eventType     String
+  // Arbitrary payload — shape depends on eventType.
+  eventData     Json?
+  createdAt     DateTime @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([eventType])
+}
+
+// ─────────────────────────────────────────────
+// EVALUATION CONFIG
+// ─────────────────────────────────────────────
+
+// Defines scoring criteria and weights for an evaluation run.
+// Can be scoped to a specific JD or used as a global default.
+//
+// criteriaDefinition shape (Json):
+// [
+//   { "criterion": "SKILLS_MATCH",             "weight": 0.35 },
+//   { "criterion": "EXPERIENCE_RELEVANCE",      "weight": 0.30 },
+//   { "criterion": "PROJECT_RELEVANCE",         "weight": 0.15 },
+//   { "criterion": "EDUCATION_CERTIFICATION",   "weight": 0.10 },
+//   { "criterion": "KEYWORD_DOMAIN_ALIGNMENT",  "weight": 0.10 }
+// ]
+// totalWeight must equal 1.0. Enforced at application layer.
+model EvaluationConfig {
+  id               String   @id @default(cuid())
+  jobDescriptionId String?
+  createdById      String?
+  name             String
+  description      String?
+  isDefault        Boolean  @default(false)
+  criteriaDefinition Json
+  // Must equal sum of all criterion weights. Stored for fast validation.
+  totalWeight      Float
+  version          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  jobDescription JobDescription? @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
+  createdBy      User?           @relation("EvaluationConfigCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  evaluations    Evaluation[]
+
+  @@index([jobDescriptionId])
+  @@index([createdById])
+  @@index([isDefault])
+}
+
+// ─────────────────────────────────────────────
+// EVALUATION
+// ─────────────────────────────────────────────
+
+// One evaluation = one scoring run for one application using one config.
+// resumeId is NOT stored here — derive it from application.resumeId when needed.
+//
+// overallScore range: 0.0–100.0
+// Computed as: Σ(criterionScore.scoreNormalized * criterionScore.weight) * 100
+model Evaluation {
+  id            String           @id @default(cuid())
+  applicationId String
+  configId      String?
+  createdById   String?
+  status        EvaluationStatus @default(PENDING)
+
+  // Final score 0.0–100.0. Derived from EvaluationCriterionScore rows.
+  // EvaluationCriterionScore is source of truth — this field is a computed cache.
+  overallScore  Float?
+
+  summary            String?
+  explanation        String?
+  skillGapSummary    String?
+  // Stored as Json for interview question metadata. Rows in EvaluationInterviewQuestion
+  // are the source of truth — this field is kept null unless used for snapshot/export.
+  interviewQuestions Json?
+  evidenceMap        Json?
+
+  // AI model tracking — used for reproducibility and debugging.
+  modelProvider  String?
+  modelName      String?
+  modelVersion   String?
+  promptVersion  String?
+  evaluationError String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  application           Application                  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  config                EvaluationConfig?            @relation(fields: [configId], references: [id], onDelete: SetNull)
+  createdBy             User?                        @relation("EvaluationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  criterionScores       EvaluationCriterionScore[]
+  skills                EvaluationSkill[]
+  interviewQuestionRows EvaluationInterviewQuestion[]
+
+  @@index([applicationId])
+  @@index([configId])
+  @@index([createdById])
+  @@index([status])
+}
+
+// Per-criterion score for one evaluation.
+// scoreNormalized: 0.0–1.0 (raw match quality before weighting)
+// weight: must match the corresponding entry in EvaluationConfig.criteriaDefinition
+// Contribution to overallScore = scoreNormalized * weight * 100
+model EvaluationCriterionScore {
+  id             String        @id @default(cuid())
+  evaluationId   String
+  criterion      CriterionName
+  weight         Float
+  // 0.0 = no match, 1.0 = perfect match
+  scoreNormalized Float
+  reason         String?
+  // Array of evidence snippets extracted from CV/JD supporting this score.
+  evidence       Json?
+  createdAt      DateTime      @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@unique([evaluationId, criterion])
+  @@index([evaluationId])
+}
+
+// Skills identified during evaluation — both matched and missing.
+model EvaluationSkill {
+  id                  String         @id @default(cuid())
+  evaluationId        String
+  skillName           String
+  normalizedSkillName String?
+  type                SkillMatchType
+  // "HIGH" | "MEDIUM" | "LOW" — reflects how critical this skill is per the JD.
+  importance          String?
+  // Evidence of where this skill was found (or not found) in the CV.
+  evidence            Json?
+  note                String?
+  createdAt           DateTime       @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId])
+  @@index([skillName])
+  @@index([normalizedSkillName])
+}
+
+// Interview questions generated for one evaluation.
+// Source of truth — do not rely on Evaluation.interviewQuestions Json.
+model EvaluationInterviewQuestion {
+  id           String   @id @default(cuid())
+  evaluationId String
+  question     String
+  category     String?
+  linkedSkill  String?
+  difficulty   String?
+  rationale    String?
+  displayOrder Int?
+  createdAt    DateTime @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId])
+  @@index([linkedSkill])
 }
