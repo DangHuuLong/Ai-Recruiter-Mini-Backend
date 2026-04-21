@@ -1,5 +1,5 @@
 {
-  "name": "Ai-Recruiter-Mini-Backend",  
+  "name": "Ai-Recruiter-Mini-Backend",
   "version": "0.0.1",
   "description": "",
   "author": "",
@@ -25,12 +25,14 @@
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.1.19",
+    "@nestjs/swagger": "^11.3.2",
     "@prisma/client": "^7.7.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "multer": "^2.1.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
