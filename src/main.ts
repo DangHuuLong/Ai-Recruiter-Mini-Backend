@@ -2,6 +2,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -16,6 +18,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  app.useGlobalInterceptors(new TransformResponseInterceptor());
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   const config = new DocumentBuilder()
     .setTitle('AI Recruiter Mini Backend')
