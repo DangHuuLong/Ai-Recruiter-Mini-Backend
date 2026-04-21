@@ -4,7 +4,7 @@ import { HealthModule } from './modules/health/health.module';
 import { FilesModule } from './modules/files/files.module';
 import { CvModule } from './modules/cv/cv.module';
 import { JdModule } from './modules/jd/jd.module';
-import { ScreeningModule } from './modules/screening/screening.module';
+import { ScreeningModule } from './modules/resumes/screening/screening.module';
 
 @Module({
   imports: [
