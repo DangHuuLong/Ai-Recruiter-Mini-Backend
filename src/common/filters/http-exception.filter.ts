@@ -1,14 +1,24 @@
 import {
-  ExceptionFilter,
-  Catch,
   ArgumentsHost,
+  Catch,
+  ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 
+type ErrorItem = {
+  field: string | null;
+  message: string;
+};
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
+  constructor(private readonly nodeEnv = 'development') { }
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -16,14 +26,40 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
-    let errors: any[] = [];
+    let errors: ErrorItem[] = [];
 
     if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
-      const exceptionResponse = exception.getResponse() as any;
+      const exceptionResponse = exception.getResponse();
 
-      message = exceptionResponse?.message || message;
-      errors = exceptionResponse?.errors || [];
+      if (typeof exceptionResponse === 'string') {
+        message = exceptionResponse;
+      } else {
+        const responseBody = exceptionResponse as {
+          message?: string | string[];
+          errors?: ErrorItem[];
+        };
+
+        if (Array.isArray(responseBody.message)) {
+          message = 'Validation failed';
+          errors = responseBody.message.map((item) => ({
+            field: null,
+            message: item,
+          }));
+        } else {
+          message = responseBody.message ?? message;
+          errors = Array.isArray(responseBody.errors) ? responseBody.errors : [];
+        }
+      }
+    } else {
+      this.logger.error(
+        exception instanceof Error ? exception.message : 'Unknown error',
+        exception instanceof Error ? exception.stack : undefined,
+      );
+
+      if (this.nodeEnv !== 'production' && exception instanceof Error) {
+        message = exception.message;
+      }
     }
 
     response.status(statusCode).json({
