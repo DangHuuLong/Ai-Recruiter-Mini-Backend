@@ -55,4 +55,14 @@ export class SupabaseStorageService {
 
     return data.publicUrl;
   }
+
+  async checkBucket() {
+    const { data, error } = await this.client.storage.getBucket(this.bucket);
+
+    if (error || !data) {
+      throw new AppException('Supabase storage bucket is not available', 500);
+    }
+
+    return true;
+  }
 }
