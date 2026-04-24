@@ -10,7 +10,7 @@ export class HealthService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly storageService: SupabaseStorageService,
-  ) { }
+  ) {}
 
   async check() {
     await this.prisma.$queryRaw`SELECT 1`;

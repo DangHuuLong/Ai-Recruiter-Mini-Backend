@@ -7,7 +7,7 @@ import { AppException } from 'src/common/exceptions/app.exception';
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private client: Redis | null = null;
 
-  constructor(private readonly configService: ConfigService) { }
+  constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
     const redisUrl = this.configService.get<string>('redis.url');

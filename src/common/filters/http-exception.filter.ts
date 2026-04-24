@@ -8,16 +8,13 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 
-type ErrorItem = {
-  field: string | null;
-  message: string;
-};
+import { ErrorItem } from '../types/api-response.type';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
-  constructor(private readonly nodeEnv = 'development') { }
+  constructor(private readonly nodeEnv = 'development') {}
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();

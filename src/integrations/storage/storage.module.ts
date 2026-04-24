@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+
 import { SupabaseStorageService } from './supabase-storage.service';
 
 @Global()
@@ -6,4 +7,4 @@ import { SupabaseStorageService } from './supabase-storage.service';
   providers: [SupabaseStorageService],
   exports: [SupabaseStorageService],
 })
-export class StorageModule { }
+export class StorageModule {}
