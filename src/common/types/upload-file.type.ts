@@ -20,6 +20,13 @@ export type UploadFileInput = {
   buffer: Buffer;
 };
 
+export type MulterUploadedFile = {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+};
+
 export type StorageUploadResult = {
   storageKey: string;
   url: string;

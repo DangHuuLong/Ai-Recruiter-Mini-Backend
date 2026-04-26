@@ -3,7 +3,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AxiosError } from 'axios';
 import { firstValueFrom } from 'rxjs';
 
-import { AppException } from '../../common/exceptions/app.exception';
 import {
   AiHealthData,
   AiServiceResponse,
@@ -12,13 +11,14 @@ import {
   ParsedResumeData,
   ScoreApplicationRequest,
   ScoreCriterionConfig,
-} from './types/ai-service.types';
+} from '../../common/types/ai-service.types';
+import { AppException } from '../../common/exceptions/app.exception';
 
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
-  constructor(private readonly httpService: HttpService) { }
+  constructor(private readonly httpService: HttpService) {}
 
   async checkHealth(): Promise<AiHealthData> {
     return this.request<AiHealthData>('GET /health', async () => {
@@ -33,12 +33,9 @@ export class AiService {
   async parseResume(rawText: string): Promise<ParsedResumeData> {
     return this.request<ParsedResumeData>('POST /parse/resume', async () => {
       const response = await firstValueFrom(
-        this.httpService.post<AiServiceResponse<ParsedResumeData>>(
-          '/parse/resume',
-          {
-            raw_text: rawText,
-          },
-        ),
+        this.httpService.post<AiServiceResponse<ParsedResumeData>>('/parse/resume', {
+          raw_text: rawText,
+        }),
       );
 
       return this.extractData(response.data, 'Invalid AI parse resume response');
@@ -46,24 +43,18 @@ export class AiService {
   }
 
   async parseJobDescription(rawText: string): Promise<ParsedJobDescriptionData> {
-    return this.request<ParsedJobDescriptionData>(
-      'POST /parse/job-description',
-      async () => {
-        const response = await firstValueFrom(
-          this.httpService.post<AiServiceResponse<ParsedJobDescriptionData>>(
-            '/parse/job-description',
-            {
-              raw_text: rawText,
-            },
-          ),
-        );
+    return this.request<ParsedJobDescriptionData>('POST /parse/job-description', async () => {
+      const response = await firstValueFrom(
+        this.httpService.post<AiServiceResponse<ParsedJobDescriptionData>>(
+          '/parse/job-description',
+          {
+            raw_text: rawText,
+          },
+        ),
+      );
 
-        return this.extractData(
-          response.data,
-          'Invalid AI parse job description response',
-        );
-      },
-    );
+      return this.extractData(response.data, 'Invalid AI parse job description response');
+    });
   }
 
   async scoreApplication(
@@ -81,23 +72,14 @@ export class AiService {
 
     return this.request<EvaluationResult>('POST /score/application', async () => {
       const response = await firstValueFrom(
-        this.httpService.post<AiServiceResponse<EvaluationResult>>(
-          '/score/application',
-          payload,
-        ),
+        this.httpService.post<AiServiceResponse<EvaluationResult>>('/score/application', payload),
       );
 
-      return this.extractData(
-        response.data,
-        'Invalid AI score application response',
-      );
+      return this.extractData(response.data, 'Invalid AI score application response');
     });
   }
 
-  private async request<T>(
-    operation: string,
-    handler: () => Promise<T>,
-  ): Promise<T> {
+  private async request<T>(operation: string, handler: () => Promise<T>): Promise<T> {
     try {
       return await handler();
     } catch (error) {
@@ -107,10 +89,7 @@ export class AiService {
     }
   }
 
-  private extractData<T>(
-    response: AiServiceResponse<T>,
-    invalidResponseMessage: string,
-  ): T {
+  private extractData<T>(response: AiServiceResponse<T>, invalidResponseMessage: string): T {
     if (!response || response.success !== true || response.data === undefined) {
       throw new AppException(invalidResponseMessage, 502);
     }
@@ -130,8 +109,7 @@ export class AiService {
     }
 
     if (axiosError.response) {
-      const message =
-        axiosError.response.data?.message || 'AI service returned an error';
+      const message = axiosError.response.data?.message || 'AI service returned an error';
 
       return new AppException(message, 502);
     }

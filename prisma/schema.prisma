@@ -16,6 +16,11 @@ enum UserRole {
   HIRING_MANAGER
 }
 
+enum FileAssetStatus {
+  ACTIVE
+  DELETED
+}
+
 enum ResumeFileType {
   PDF
   DOCX
@@ -92,6 +97,33 @@ model User {
 }
 
 // ─────────────────────────────────────────────
+// FILE ASSET
+// ─────────────────────────────────────────────
+
+model FileAsset {
+  id              String          @id @default(cuid())
+  fileName        String
+  originalFileUrl String
+  storageKey      String          @unique
+  fileType        ResumeFileType
+  fileSizeBytes   Int
+  checksum        String?
+  bucket          String
+  status          FileAssetStatus @default(ACTIVE)
+  uploadedAt      DateTime        @default(now())
+  deletedAt       DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  resumes Resume[]
+
+  @@index([fileType])
+  @@index([checksum])
+  @@index([status])
+  @@index([uploadedAt])
+}
+
+// ─────────────────────────────────────────────
 // CANDIDATE & RESUME
 // ─────────────────────────────────────────────
 
@@ -123,32 +155,27 @@ model Candidate {
 }
 
 model Resume {
-  id             String         @id @default(cuid())
-  candidateId    String
-  fileName       String
-  originalFileUrl String
-  storageKey     String?
-  fileType       ResumeFileType
-  fileSizeBytes  Int?
-  // SHA-256 checksum — used to detect duplicate uploads.
-  checksum       String?
-  rawText        String?
-  // Structured JSON extracted from CV.
-  // Shape: { personal, summary, skills[], education[], experience[], projects[], certifications[], achievements[], languages[] }
-  parsedData     Json?
-  parseStatus    ParseStatus    @default(PENDING)
-  parserVersion  String?
-  parsingError   String?
-  uploadedAt     DateTime       @default(now())
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id          String @id @default(cuid())
+  candidateId String
+  fileAssetId String
+
+  rawText       String?
+  parsedData    Json?
+  parseStatus   ParseStatus @default(PENDING)
+  parserVersion String?
+  parsingError  String?
+
+  uploadedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   candidate    Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  fileAsset    FileAsset     @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
   applications Application[]
 
   @@index([candidateId])
+  @@index([fileAssetId])
   @@index([parseStatus])
-  @@index([checksum])
 }
 
 // ─────────────────────────────────────────────
@@ -226,11 +253,11 @@ model Application {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
-  candidate      Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  jobDescription JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+  candidate      Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobDescription JobDescription     @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
   // onDelete: Restrict — do not allow deleting a resume that is tied to an application.
-  resume         Resume         @relation(fields: [resumeId], references: [id], onDelete: Restrict)
-  createdBy      User?          @relation("ApplicationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  resume         Resume             @relation(fields: [resumeId], references: [id], onDelete: Restrict)
+  createdBy      User?              @relation("ApplicationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   evaluations    Evaluation[]
   events         ApplicationEvent[]
 
@@ -274,18 +301,18 @@ model ApplicationEvent {
 // ]
 // totalWeight must equal 1.0. Enforced at application layer.
 model EvaluationConfig {
-  id               String   @id @default(cuid())
-  jobDescriptionId String?
-  createdById      String?
-  name             String
-  description      String?
-  isDefault        Boolean  @default(false)
+  id                 String   @id @default(cuid())
+  jobDescriptionId   String?
+  createdById        String?
+  name               String
+  description        String?
+  isDefault          Boolean  @default(false)
   criteriaDefinition Json
   // Must equal sum of all criterion weights. Stored for fast validation.
-  totalWeight      Float
-  version          String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  totalWeight        Float
+  version            String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   jobDescription JobDescription? @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
   createdBy      User?           @relation("EvaluationConfigCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -314,7 +341,7 @@ model Evaluation {
 
   // Final score 0.0–100.0. Derived from EvaluationCriterionScore rows.
   // EvaluationCriterionScore is source of truth — this field is a computed cache.
-  overallScore  Float?
+  overallScore Float?
 
   summary            String?
   explanation        String?
@@ -325,20 +352,20 @@ model Evaluation {
   evidenceMap        Json?
 
   // AI model tracking — used for reproducibility and debugging.
-  modelProvider  String?
-  modelName      String?
-  modelVersion   String?
-  promptVersion  String?
+  modelProvider   String?
+  modelName       String?
+  modelVersion    String?
+  promptVersion   String?
   evaluationError String?
 
   startedAt   DateTime?
   completedAt DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  application           Application                  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  config                EvaluationConfig?            @relation(fields: [configId], references: [id], onDelete: SetNull)
-  createdBy             User?                        @relation("EvaluationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  application           Application                   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  config                EvaluationConfig?             @relation(fields: [configId], references: [id], onDelete: SetNull)
+  createdBy             User?                         @relation("EvaluationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   criterionScores       EvaluationCriterionScore[]
   skills                EvaluationSkill[]
   interviewQuestionRows EvaluationInterviewQuestion[]
@@ -354,16 +381,16 @@ model Evaluation {
 // weight: must match the corresponding entry in EvaluationConfig.criteriaDefinition
 // Contribution to overallScore = scoreNormalized * weight * 100
 model EvaluationCriterionScore {
-  id             String        @id @default(cuid())
-  evaluationId   String
-  criterion      CriterionName
-  weight         Float
+  id              String        @id @default(cuid())
+  evaluationId    String
+  criterion       CriterionName
+  weight          Float
   // 0.0 = no match, 1.0 = perfect match
   scoreNormalized Float
-  reason         String?
+  reason          String?
   // Array of evidence snippets extracted from CV/JD supporting this score.
-  evidence       Json?
-  createdAt      DateTime      @default(now())
+  evidence        Json?
+  createdAt       DateTime      @default(now())
 
   evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
 
