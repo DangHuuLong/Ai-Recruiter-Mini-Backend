@@ -18,4 +18,8 @@ export const envValidationSchema = Joi.object({
   GEMINI_MODEL: Joi.string().default('gemini-3-flash-preview'),
 
   MAX_FILE_SIZE_MB: Joi.number().default(5),
+
+  AI_SERVICE_URL: Joi.string().uri().default('http://localhost:8000'),
+
+  AI_REQUEST_TIMEOUT_MS: Joi.number().integer().positive().default(30000),
 });
