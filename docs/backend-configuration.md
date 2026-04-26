@@ -1144,3 +1144,213 @@ A successful test confirms that the Backend can call:
 - Resume parsing
 - Job description parsing
 - Application scoring
+
+---
+
+## 27. File Asset Endpoints
+
+### Purpose
+
+This section defines the Backend file upload endpoints used to manage uploaded CV files.
+
+The file flow is handled through the `FilesModule`. Uploaded files are stored in Supabase Storage, while file metadata is persisted in the `FileAsset` table.
+
+`FileAsset` is the source of truth for uploaded file metadata. `Resume` references uploaded files through `fileAssetId`.
+
+---
+
+### Code Location
+
+```txt
+src/modules/files/
+├── files.module.ts
+├── files.controller.ts
+└── files.service.ts
+
+Shared upload utilities and types are placed in:
+
+src/common/
+├── constants/
+│   └── upload.constants.ts
+├── types/
+│   └── upload-file.type.ts
+└── utils/
+    └── upload-file.util.ts
+```
+
+### File Responsibilities
+
+| File | Purpose |
+|------|---------|
+| src/modules/files/files.module.ts | Registers the files feature module |
+| src/modules/files/files.controller.ts | Defines file API endpoints |
+| src/modules/files/files.service.ts | Handles file upload, lookup, delete, storage integration, and FileAsset persistence |
+| src/common/constants/upload.constants.ts | Defines allowed MIME types, allowed extensions, default bucket, upload folder, and size constants |
+| src/common/types/upload-file.type.ts | Defines shared upload-related TypeScript types |
+| src/common/utils/upload-file.util.ts | Provides reusable upload helpers such as MIME validation, checksum generation, storage key generation, and file type mapping |
+
+### Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | /api/files/upload | Uploads a CV file and creates a FileAsset record |
+| GET | /api/files/:id | Retrieves active file metadata |
+| DELETE | /api/files/:id | Deletes an uploaded file if it is not linked to a resume |
+
+---
+
+## POST /api/files/upload
+
+Uploads a file to Supabase Storage and creates a FileAsset record in the database.
+
+The request uses multipart/form-data.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| file | File | Yes | Uploaded CV file |
+
+**Supported file types:**
+
+- PDF
+- DOCX
+
+### Main Flow
+
+```
+Receive uploaded file
+  ↓
+Validate file exists
+  ↓
+Validate MIME type
+  ↓
+Validate file size
+  ↓
+Calculate checksum
+  ↓
+Generate storage key
+  ↓
+Upload file to Supabase Storage
+  ↓
+Create FileAsset record
+  ↓
+Return FileAsset metadata
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": "file_123",
+    "fileName": "resume.pdf",
+    "originalFileUrl": "https://example.supabase.co/storage/v1/object/public/cv-files/resumes/file.pdf",
+    "storageKey": "resumes/uuid.pdf",
+    "fileType": "PDF",
+    "fileSizeBytes": 123456,
+    "checksum": "sha256-checksum",
+    "bucket": "cv-files",
+    "status": "ACTIVE",
+    "uploadedAt": "2026-04-26T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+## GET /api/files/:id
+
+Returns metadata for an active FileAsset.
+
+### Main Flow
+
+```
+Receive file id
+  ↓
+Find active FileAsset
+  ↓
+Return file metadata
+```
+
+If the file does not exist or has been deleted, the Backend returns 404.
+
+---
+
+## DELETE /api/files/:id
+
+Deletes a file asset if it is not linked to a resume.
+
+The delete flow removes the file from Supabase Storage and then marks the FileAsset record as deleted.
+
+### Main Flow
+
+```
+Receive file id
+  ↓
+Find active FileAsset
+  ↓
+Check if file is linked to any Resume
+  ↓
+Delete file from Supabase Storage
+  ↓
+Update FileAsset status to DELETED
+  ↓
+Return delete result
+```
+
+If the file is already linked to a resume, the Backend returns 409 Conflict.
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": "file_123",
+    "deleted": true
+  }
+}
+```
+
+---
+
+## Validation Rules
+
+| Rule | Behavior |
+|------|----------|
+| Missing file | Return 400 Bad Request |
+| Unsupported file type | Return 400 Bad Request |
+| File size exceeds limit | Return 400 Bad Request |
+| Supabase upload fails | Return external service error |
+| File not found | Return 404 Not Found |
+| File already linked to resume | Return 409 Conflict |
+
+---
+
+## Source of Truth
+
+| Data | Source |
+|------|--------|
+| File metadata | FileAsset table |
+| File URL | FileAsset.originalFileUrl |
+| Storage key | FileAsset.storageKey |
+| File type | FileAsset.fileType |
+| File size | FileAsset.fileSizeBytes |
+| File checksum | FileAsset.checksum |
+| File lifecycle status | FileAsset.status |
+
+Resume should not duplicate file metadata. It should reference uploaded files using fileAssetId.
+
+---
+
+## Notes
+
+- File upload is separated from resume creation.
+- POST /api/files/upload only creates a FileAsset.
+- POST /api/resumes will later use fileAssetId to create a resume for a candidate.
+- A file that is already linked to a resume should not be deleted directly.
+- Supabase Storage stores the actual file, while PostgreSQL stores the file metadata.
