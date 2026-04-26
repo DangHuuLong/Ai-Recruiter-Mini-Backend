@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AxiosError } from 'axios';
 import { firstValueFrom } from 'rxjs';
 
+import { AppException } from '../../common/exceptions/app.exception';
 import {
   AiHealthData,
   AiServiceResponse,
@@ -12,7 +13,6 @@ import {
   ScoreApplicationRequest,
   ScoreCriterionConfig,
 } from '../../common/types/ai-service.types';
-import { AppException } from '../../common/exceptions/app.exception';
 
 @Injectable()
 export class AiService {

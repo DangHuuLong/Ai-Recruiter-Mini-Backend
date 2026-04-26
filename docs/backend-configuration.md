@@ -1354,3 +1354,398 @@ Resume should not duplicate file metadata. It should reference uploaded files us
 - POST /api/resumes will later use fileAssetId to create a resume for a candidate.
 - A file that is already linked to a resume should not be deleted directly.
 - Supabase Storage stores the actual file, while PostgreSQL stores the file metadata.
+
+---
+
+## 28. Candidate Endpoints
+
+### Purpose
+
+This section defines the Backend candidate endpoints used to manage candidate profile data in the MVP.
+
+The candidate flow is handled through the `CandidatesModule`. Candidate data is stored in the `Candidate` table and can later be linked with resumes, applications, and evaluations.
+
+Candidate profile management is separated from resume upload. A candidate may exist before any resume is uploaded.
+
+---
+
+### Code Location
+
+```txt
+src/modules/candidates/
+├── dto/
+│   ├── candidate-query.dto.ts
+│   ├── create-candidate.dto.ts
+│   └── update-candidate.dto.ts
+├── candidates.module.ts
+├── candidates.controller.ts
+└── candidates.service.ts
+```
+
+### File Responsibilities
+
+| File | Purpose |
+|------|---------|
+| src/modules/candidates/candidates.module.ts | Registers the candidates feature module |
+| src/modules/candidates/candidates.controller.ts | Defines candidate API endpoints |
+| src/modules/candidates/candidates.service.ts | Handles candidate business logic and database access |
+| src/modules/candidates/dto/create-candidate.dto.ts | Defines request validation rules for creating candidates |
+| src/modules/candidates/dto/update-candidate.dto.ts | Defines request validation rules for updating candidates |
+| src/modules/candidates/dto/candidate-query.dto.ts | Defines query parameters for pagination, searching, and sorting |
+
+### Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | /api/candidates | Creates a new candidate profile |
+| GET | /api/candidates | Retrieves paginated candidate profiles |
+| GET | /api/candidates/:id | Retrieves a candidate profile by id |
+| PATCH | /api/candidates/:id | Updates a candidate profile |
+| GET | /api/candidates/:id/resumes | Retrieves resumes that belong to a candidate |
+
+**Note:** DELETE /api/candidates/:id is intentionally not included in the MVP. Candidate deletion requires additional domain rules because candidates may be linked to resumes, applications, and evaluations.
+
+---
+
+## POST /api/candidates
+
+Creates a new candidate profile.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| fullName | string | Yes | Candidate full name |
+| primaryEmail | string | No | Candidate primary email |
+| primaryPhone | string | No | Candidate primary phone number |
+| linkedinUrl | string | No | Candidate LinkedIn profile URL |
+| githubUrl | string | No | Candidate GitHub profile URL |
+| portfolioUrl | string | No | Candidate portfolio URL |
+| location | string | No | Candidate location |
+
+### Main Flow
+
+```
+Receive candidate payload
+  ↓
+Validate request body
+  ↓
+Check duplicate email if primaryEmail is provided
+  ↓
+Create Candidate record
+  ↓
+Return created candidate
+```
+
+### Example Request
+
+```json
+{
+  "fullName": "Nguyen Van A",
+  "primaryEmail": "vana@example.com",
+  "primaryPhone": "0900000001",
+  "location": "Ho Chi Minh City"
+}
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Candidate created successfully",
+  "data": {
+    "id": "candidate_123",
+    "fullName": "Nguyen Van A",
+    "primaryEmail": "vana@example.com",
+    "primaryPhone": "0900000001",
+    "linkedinUrl": null,
+    "githubUrl": null,
+    "portfolioUrl": null,
+    "location": "Ho Chi Minh City",
+    "normalizedProfile": null,
+    "identityConfidence": null,
+    "createdAt": "2026-04-26T10:30:00.000Z",
+    "updatedAt": "2026-04-26T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+## GET /api/candidates
+
+Returns paginated candidate profiles.
+
+### Query Parameters
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| page | number | 1 | Current page |
+| limit | number | 10 | Number of items per page |
+| search | string | — | Search by candidate name, email, phone, or location |
+| sortBy | string | createdAt | Sort field |
+| sortOrder | asc or desc | desc | Sort direction |
+
+### Supported Sort Fields
+
+- createdAt
+- updatedAt
+- fullName
+- primaryEmail
+
+### Main Flow
+
+```
+Receive query parameters
+  ↓
+Validate pagination, search, and sorting options
+  ↓
+Build Candidate query filter
+  ↓
+Fetch paginated candidates
+  ↓
+Count total candidates matching filter
+  ↓
+Return candidates with pagination metadata
+```
+
+### Example Request
+
+```
+GET /api/candidates?page=1&limit=10&search=nguyen&sortBy=createdAt&sortOrder=desc
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Candidates fetched successfully",
+  "data": [
+    {
+      "id": "candidate_123",
+      "fullName": "Nguyen Van A",
+      "primaryEmail": "vana@example.com",
+      "primaryPhone": "0900000001",
+      "location": "Ho Chi Minh City",
+      "_count": {
+        "resumes": 0
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 10,
+    "total": 1,
+    "totalPages": 1
+  }
+}
+```
+
+---
+
+## GET /api/candidates/:id
+
+Returns one candidate profile by id.
+
+### Main Flow
+
+```
+Receive candidate id
+  ↓
+Find Candidate by id
+  ↓
+Return candidate profile
+```
+
+If the candidate does not exist, the Backend returns 404 Not Found.
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Candidate fetched successfully",
+  "data": {
+    "id": "candidate_123",
+    "fullName": "Nguyen Van A",
+    "primaryEmail": "vana@example.com",
+    "primaryPhone": "0900000001",
+    "location": "Ho Chi Minh City",
+    "_count": {
+      "resumes": 0
+    }
+  }
+}
+```
+
+---
+
+## PATCH /api/candidates/:id
+
+Updates an existing candidate profile.
+
+The update endpoint supports partial updates. The client only needs to send fields that should be changed.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| fullName | string | No | Candidate full name |
+| primaryEmail | string | No | Candidate primary email |
+| primaryPhone | string | No | Candidate primary phone number |
+| linkedinUrl | string | No | Candidate LinkedIn profile URL |
+| githubUrl | string | No | Candidate GitHub profile URL |
+| portfolioUrl | string | No | Candidate portfolio URL |
+| location | string | No | Candidate location |
+
+### Main Flow
+
+```
+Receive candidate id
+  ↓
+Validate request body
+  ↓
+Check Candidate exists
+  ↓
+Check duplicate email if primaryEmail is provided
+  ↓
+Update Candidate record
+  ↓
+Return updated candidate
+```
+
+### Example Request
+
+```json
+{
+  "fullName": "Nguyen Van A Updated",
+  "location": "Ha Noi"
+}
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Candidate updated successfully",
+  "data": {
+    "id": "candidate_123",
+    "fullName": "Nguyen Van A Updated",
+    "primaryEmail": "vana@example.com",
+    "primaryPhone": "0900000001",
+    "location": "Ha Noi",
+    "updatedAt": "2026-04-26T10:45:00.000Z"
+  }
+}
+```
+
+---
+
+## GET /api/candidates/:id/resumes
+
+Returns all resumes that belong to a candidate.
+
+This endpoint is useful for displaying candidate detail pages where the frontend needs to show uploaded CV records for the selected candidate.
+
+### Main Flow
+
+```
+Receive candidate id
+  ↓
+Check Candidate exists
+  ↓
+Find resumes by candidateId
+  ↓
+Include related FileAsset metadata
+  ↓
+Return candidate resumes
+```
+
+If the candidate exists but has no resumes, the Backend returns an empty array.
+
+### Example Response When Candidate Has No Resume
+
+```json
+{
+  "success": true,
+  "message": "Candidate resumes fetched successfully",
+  "data": []
+}
+```
+
+### Example Response When Candidate Has Resumes
+
+```json
+{
+  "success": true,
+  "message": "Candidate resumes fetched successfully",
+  "data": [
+    {
+      "id": "resume_123",
+      "candidateId": "candidate_123",
+      "fileAssetId": "file_123",
+      "parseStatus": "PENDING",
+      "parserVersion": null,
+      "parsingError": null,
+      "createdAt": "2026-04-26T10:30:00.000Z",
+      "updatedAt": "2026-04-26T10:30:00.000Z",
+      "fileAsset": {
+        "id": "file_123",
+        "fileName": "resume.pdf",
+        "originalFileUrl": "https://example.supabase.co/storage/v1/object/public/cv-files/resumes/file.pdf",
+        "storageKey": "resumes/uuid.pdf",
+        "fileType": "PDF",
+        "fileSizeBytes": 123456,
+        "checksum": "sha256-checksum",
+        "bucket": "cv-files",
+        "status": "ACTIVE",
+        "uploadedAt": "2026-04-26T10:30:00.000Z"
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Validation Rules
+
+| Rule | Behavior |
+|------|----------|
+| Missing fullName when creating candidate | Return 400 Bad Request |
+| Invalid email format | Return 400 Bad Request |
+| Invalid URL format | Return 400 Bad Request |
+| Unknown request body field | Return 400 Bad Request |
+| Duplicate candidate email | Return 409 Conflict |
+| Candidate not found | Return 404 Not Found |
+| Invalid pagination query | Return 400 Bad Request |
+| Invalid sort field | Return 400 Bad Request |
+
+---
+
+## Source of Truth
+
+| Data | Source |
+|------|--------|
+| Candidate profile | Candidate table |
+| Candidate resumes | Resume table |
+| Resume file metadata | FileAsset table |
+| Uploaded file URL | FileAsset.originalFileUrl |
+| Uploaded file lifecycle | FileAsset.status |
+
+Candidate data should not duplicate resume file metadata. Resume file metadata belongs to FileAsset.
+
+---
+
+## Notes
+
+- Candidate creation is separated from resume upload.
+- A candidate can exist without any resume.
+- Candidate resumes are retrieved through GET /api/candidates/:id/resumes.
+- DELETE /api/candidates/:id is not part of the MVP.
+- Candidate update uses partial update behavior through PATCH /api/candidates/:id.
+- Duplicate email validation is applied when creating or updating candidates.
+- Candidate list supports pagination, searching, and sorting.

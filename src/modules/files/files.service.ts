@@ -29,9 +29,7 @@ export class FilesService {
     private readonly configService: ConfigService,
   ) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseServiceRoleKey = this.configService.get<string>(
-      'SUPABASE_SERVICE_ROLE_KEY',
-    );
+    const supabaseServiceRoleKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
       throw new AppException('Supabase configuration is missing', 500);
@@ -39,13 +37,10 @@ export class FilesService {
 
     this.supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    this.bucket =
-      this.configService.get<string>('SUPABASE_BUCKET') ||
-      DEFAULT_UPLOAD_BUCKET;
+    this.bucket = this.configService.get<string>('SUPABASE_BUCKET') || DEFAULT_UPLOAD_BUCKET;
 
     const maxFileSizeMb =
-      Number(this.configService.get<number>('MAX_FILE_SIZE_MB')) ||
-      DEFAULT_MAX_FILE_SIZE_MB;
+      Number(this.configService.get<number>('MAX_FILE_SIZE_MB')) || DEFAULT_MAX_FILE_SIZE_MB;
 
     this.maxFileSizeBytes = getMaxUploadFileSizeBytes(maxFileSizeMb);
   }
@@ -56,10 +51,7 @@ export class FilesService {
     }
 
     if (!isAllowedUploadMimeType(file.mimeType)) {
-      throw new AppException(
-        'Invalid file type. Only PDF and DOCX are allowed',
-        400,
-      );
+      throw new AppException('Invalid file type. Only PDF and DOCX are allowed', 400);
     }
 
     if (file.size > this.maxFileSizeBytes) {
@@ -89,9 +81,7 @@ export class FilesService {
       throw new AppException('Failed to upload file to storage', 502);
     }
 
-    const { data } = this.supabase.storage
-      .from(this.bucket)
-      .getPublicUrl(storageKey);
+    const { data } = this.supabase.storage.from(this.bucket).getPublicUrl(storageKey);
 
     return this.prisma.fileAsset.create({
       data: {
