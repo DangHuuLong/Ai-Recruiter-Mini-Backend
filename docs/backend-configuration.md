@@ -1749,3 +1749,240 @@ Candidate data should not duplicate resume file metadata. Resume file metadata b
 - Candidate update uses partial update behavior through PATCH /api/candidates/:id.
 - Duplicate email validation is applied when creating or updating candidates.
 - Candidate list supports pagination, searching, and sorting.
+
+---
+
+## 29. Shared Enums and Entity Existence Utilities
+
+### Purpose
+
+This update adds shared enum files and reusable entity existence helpers to reduce duplicated code across modules.
+
+### Code Location
+
+```txt
+src/common/
+├── enums/
+│   ├── file-asset-status.enum.ts
+│   ├── index.ts
+│   ├── parse-status.enum.ts
+│   └── resume-file-type.enum.ts
+└── utils/
+    └── entity-exists.util.ts
+```
+
+### Important Notes
+
+- Shared enums are used mainly in DTO validation.
+- Prisma-generated enums can still be used in services for database operations.
+- entity-exists.util.ts contains reusable helpers such as:
+  - ensureCandidateExists()
+  - ensureResumeExists()
+  - ensureFileAssetExists()
+- These helpers only check whether an entity exists and throw a consistent AppException if not found.
+- Business rules must remain inside domain services.
+
+### Examples of business rules that should stay in services:
+
+| Rule | Location |
+|------|----------|
+| FileAsset must be ACTIVE before creating Resume | ResumesService |
+| FileAsset must not already be linked to another Resume | ResumesService |
+| Resume cannot be deleted if linked to an Application | ResumesService |
+| Candidate email must be unique | CandidatesService |
+
+---
+
+## 30. Candidate Service Refactor
+
+### Purpose
+
+CandidatesService was updated to reuse the shared ensureCandidateExists() helper.
+
+### Updated Files
+
+- src/modules/candidates/candidates.service.ts
+- src/common/utils/entity-exists.util.ts
+
+### Main Changes
+
+- Removed duplicated private ensureCandidateExists() from CandidatesService.
+- Reused shared helper from src/common/utils/entity-exists.util.ts.
+- Applied to:
+  - PATCH /api/candidates/:id
+  - GET /api/candidates/:id/resumes
+
+**Note:** GET /api/candidates/:id still performs its own lookup because it returns the full candidate profile with resume count.
+
+---
+
+## 31. Resume Endpoints
+
+### Purpose
+
+This section defines the Resume APIs implemented for the MVP.
+
+A resume belongs to a candidate and references one uploaded file through fileAssetId.
+
+Resume creation is separated from file upload. The file must already exist as a valid FileAsset.
+
+### Code Location
+
+```txt
+src/modules/resumes/
+├── dto/
+│   ├── create-resume.dto.ts
+│   ├── resume-query.dto.ts
+│   └── update-resume.dto.ts
+├── resumes.module.ts
+├── resumes.controller.ts
+└── resumes.service.ts
+```
+
+### Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | /api/resumes | Creates a resume from an existing candidate and file asset |
+| GET | /api/resumes | Retrieves paginated resumes |
+| GET | /api/resumes/:id | Retrieves a resume by id |
+| PATCH | /api/resumes/:id | Updates resume parsing-related fields |
+| DELETE | /api/resumes/:id | Deletes a resume if it is not linked to an application |
+
+---
+
+## POST /api/resumes
+
+Creates a resume record with:
+
+```
+parseStatus = PENDING
+```
+
+### Request Body
+
+| Field | Type | Required |
+|-------|------|----------|
+| candidateId | string | Yes |
+| fileAssetId | string | Yes |
+
+### Main Flow
+
+```
+Validate request body
+↓
+Check Candidate exists
+↓
+Check FileAsset exists and is ACTIVE
+↓
+Check FileAsset is not already linked to another Resume
+↓
+Create Resume with parseStatus = PENDING
+```
+
+---
+
+## GET /api/resumes
+
+Returns paginated resume records.
+
+### Query Parameters
+
+| Field | Type | Default |
+|-------|------|---------|
+| page | number | 1 |
+| limit | number | 10 |
+| candidateId | string | — |
+| parseStatus | string | — |
+| sortBy | string | createdAt |
+| sortOrder | asc or desc | desc |
+
+### Supported parseStatus values:
+
+- PENDING
+- PROCESSING
+- SUCCESS
+- FAILED
+
+---
+
+## GET /api/resumes/:id
+
+Returns one resume by id.
+
+The response includes:
+
+- Resume data
+- Candidate summary
+- FileAsset metadata
+
+If the resume does not exist, the Backend returns 404 Not Found.
+
+---
+
+## PATCH /api/resumes/:id
+
+Updates parsing-related fields.
+
+### Updatable Fields
+
+| Field | Description |
+|-------|-------------|
+| rawText | Extracted resume text |
+| parsedData | Structured parsed resume JSON |
+| parseStatus | Resume parsing lifecycle status |
+| parserVersion | Parser version used |
+| parsingError | Parsing error message |
+
+This endpoint is mainly used by parsing workflows or mock parsing flows during MVP development.
+
+---
+
+## DELETE /api/resumes/:id
+
+Deletes a resume record if it is not linked to any application.
+
+### Important rules:
+
+- Deletes only the Resume record.
+- Does not delete the related FileAsset.
+- Does not delete the actual uploaded file from storage.
+- If the resume is linked to an application, return 409 Conflict.
+
+---
+
+## Validation Rules
+
+| Rule | Behavior |
+|------|----------|
+| Candidate not found | 404 Not Found |
+| FileAsset not found | 404 Not Found |
+| FileAsset is not ACTIVE | 409 Conflict |
+| FileAsset already linked to a resume | 409 Conflict |
+| Resume not found | 404 Not Found |
+| Resume linked to application when deleting | 409 Conflict |
+| Invalid parse status | 400 Bad Request |
+| Invalid pagination query | 400 Bad Request |
+
+---
+
+## Source of Truth
+
+| Data | Source |
+|------|--------|
+| Resume ownership | Resume.candidateId |
+| Uploaded file reference | Resume.fileAssetId |
+| Extracted text | Resume.rawText |
+| Structured parsed CV | Resume.parsedData |
+| Parsing lifecycle | Resume.parseStatus |
+| File metadata | FileAsset table |
+| Candidate profile | Candidate table |
+
+---
+
+## Notes
+
+- Resume should not duplicate file metadata.
+- File metadata belongs to FileAsset.
+- New resumes start with parseStatus = PENDING.
+- A file asset can only be linked to one resume.
