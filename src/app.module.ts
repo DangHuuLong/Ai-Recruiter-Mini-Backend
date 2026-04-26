@@ -10,8 +10,8 @@ import { PrismaModule } from './database/prisma/prisma.module';
 import { AiModule } from './integrations/ai/ai.module';
 import { RedisModule } from './integrations/redis/redis.module';
 import { StorageModule } from './integrations/storage/storage.module';
+import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -24,6 +24,7 @@ import { HealthModule } from './modules/health/health.module';
     RedisModule,
     HealthModule,
     AiModule,
+    FilesModule,
   ],
 })
 export class AppModule {}
