@@ -5,6 +5,7 @@ import { CandidateQueryDto } from './dto/candidate-query.dto';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { AppException } from '../../common/exceptions/app.exception';
+import { ensureCandidateExists } from '../../common/utils/entity-exists.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 
 @Injectable()
@@ -41,7 +42,7 @@ export class CandidatesService {
   }
 
   async update(id: string, updateCandidateDto: UpdateCandidateDto) {
-    await this.ensureCandidateExists(id);
+    await ensureCandidateExists(this.prisma, id);
 
     if (updateCandidateDto.primaryEmail) {
       const existingCandidate = await this.prisma.candidate.findFirst({
@@ -161,7 +162,7 @@ export class CandidatesService {
   }
 
   async findResumesByCandidateId(id: string) {
-    await this.ensureCandidateExists(id);
+    await ensureCandidateExists(this.prisma, id);
 
     return this.prisma.resume.findMany({
       where: {
@@ -187,20 +188,5 @@ export class CandidatesService {
         },
       },
     });
-  }
-
-  private async ensureCandidateExists(id: string) {
-    const candidate = await this.prisma.candidate.findUnique({
-      where: { id },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!candidate) {
-      throw new AppException('Candidate not found', 404);
-    }
-
-    return candidate;
   }
 }
