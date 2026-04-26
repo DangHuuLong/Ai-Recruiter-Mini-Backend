@@ -7,6 +7,7 @@ import { envValidationSchema } from './config/env.validation';
 import { redisConfig } from './config/redis.config';
 import { supabaseConfig } from './config/supabase.config';
 import { PrismaModule } from './database/prisma/prisma.module';
+import { AiModule } from './integrations/ai/ai.module';
 import { RedisModule } from './integrations/redis/redis.module';
 import { StorageModule } from './integrations/storage/storage.module';
 import { HealthModule } from './modules/health/health.module';
@@ -22,6 +23,7 @@ import { HealthModule } from './modules/health/health.module';
     StorageModule,
     RedisModule,
     HealthModule,
+    AiModule,
   ],
 })
 export class AppModule {}

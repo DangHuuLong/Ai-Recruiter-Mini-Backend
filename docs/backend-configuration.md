@@ -972,3 +972,122 @@ Set status = COMPLETED
 - Skip request validation
 - Log sensitive information
 - Mix business logic with infrastructure code
+
+---
+
+## 26. AI Service Integration
+
+### Purpose
+
+The Backend integrates with an internal AI service to handle AI-related tasks such as:
+- Parsing resumes
+- Parsing job descriptions  
+- Scoring applications
+
+**Important:** The Frontend must not call the AI service directly. All AI-related requests go through the Backend.
+
+### Communication Flow
+
+```
+Frontend
+  ↓
+Backend API
+  ↓
+Backend AiService
+  ↓
+AI Service
+```
+
+### Integration Location
+
+AI service integration is placed in:
+
+```
+src/integrations/ai/
+├── ai.module.ts
+├── ai.service.ts
+└── types/
+    └── ai-service.types.ts
+```
+
+| File | Purpose |
+|------|---------|
+| `ai.module.ts` | Configures the AI integration module and HTTP client |
+| `ai.service.ts` | Contains methods for calling the AI service |
+| `types/ai-service.types.ts` | Defines request and response contracts |
+
+This layer is responsible only for communication with the AI service. Business logic remains in domain modules such as resumes, job descriptions, evaluations, and health.
+
+### Environment Variables
+
+```
+AI_SERVICE_URL=http://localhost:8000
+AI_REQUEST_TIMEOUT_MS=30000
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `AI_SERVICE_URL` | Base URL of the AI service |
+| `AI_REQUEST_TIMEOUT_MS` | Timeout for requests to the AI service |
+
+### Backend AiService Methods
+
+| Method | AI Endpoint | Purpose |
+|--------|------------|---------|
+| `checkHealth()` | `GET /health` | Checks AI service status |
+| `parseResume()` | `POST /parse/resume` | Parses raw resume text |
+| `parseJobDescription()` | `POST /parse/job-description` | Parses raw job description text |
+| `scoreApplication()` | `POST /score/application` | Scores a resume against a job description |
+
+### Error Handling
+
+Errors from the AI service are mapped before being returned by the Backend. This keeps API responses consistent and prevents raw HTTP client errors from leaking to the Frontend.
+
+#### Common Cases
+
+| Scenario | Backend Behavior |
+|----------|-----------------|
+| AI service unavailable | Return external service error |
+| AI request timeout | Return timeout error |
+| Invalid AI response | Return integration error |
+| AI service returns error | Return mapped backend error |
+
+### Usage in Domain Flow
+
+The AI service is called by backend domain services when needed:
+
+- `ResumesService` calls `parseResume()`
+- `JobDescriptionsService` calls `parseJobDescription()`
+- `EvaluationsService` calls `scoreApplication()`
+- `HealthService` may call `checkHealth()`
+
+The Backend remains the source of truth for persisted data. AI service responses are saved into the database only through the relevant domain workflow.
+
+### Source of Truth Rules
+
+| Data | Source of Truth |
+|------|-----------------|
+| Resume parsed data | `Resume.parsedData` |
+| Job description parsed data | `JobDescription.parsedData` |
+| Job skills used for matching | `JobSkill` table |
+| Evaluation result | `Evaluation` and related evaluation tables |
+
+### Testing
+
+AI service integration should be tested by running the AI service locally and executing Backend integration tests.
+
+#### Expected Local Setup
+
+```
+AI Service: http://localhost:8000
+Backend AiService integration test
+```
+
+#### Test Coverage
+
+A successful test confirms that the Backend can call:
+
+- AI health check
+- Resume parsing
+- Job description parsing
+- Application scoring
