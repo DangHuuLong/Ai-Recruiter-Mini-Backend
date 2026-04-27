@@ -1986,3 +1986,134 @@ Deletes a resume record if it is not linked to any application.
 - File metadata belongs to FileAsset.
 - New resumes start with parseStatus = PENDING.
 - A file asset can only be linked to one resume.
+
+---
+
+## 32. Resume Parse Flow
+
+### Purpose
+
+This section documents the Backend resume parsing flow.
+
+The flow allows the Backend to trigger resume parsing, call the AI service, save parsed results, and expose parsed data for the Frontend.
+
+At this stage, the flow uses mock raw text and mock AI parsing. Real PDF/DOCX text extraction is not implemented yet.
+
+---
+
+### Code Location
+
+```txt
+src/modules/resumes/
+├── resumes.controller.ts
+├── resumes.service.ts
+└── utils/
+    ├── resume-error.util.ts
+    ├── resume-include.util.ts
+    └── resume-parsing.util.ts
+
+src/integrations/ai/
+├── ai.module.ts
+├── ai.service.ts
+└── types/
+    └── ai-service.types.ts
+```
+
+### Updated Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/resumes/:id/parse` | Triggers resume parsing |
+| GET | `/api/resumes/:id/parsed-data` | Returns parsed resume data |
+
+### POST /api/resumes/:id/parse
+
+Triggers parsing for an existing resume.
+
+#### Main Flow
+
+```
+Receive resume id
+↓
+Find Resume with Candidate and FileAsset
+↓
+Set parseStatus = PROCESSING
+↓
+Build mock rawText
+↓
+Call AiService.parseResume(rawText)
+↓
+Receive parsedData
+↓
+Save rawText, parsedData, parserVersion
+↓
+Set parseStatus = SUCCESS
+↓
+Clear parsingError
+↓
+Update Candidate.normalizedProfile
+↓
+Return updated Resume
+```
+
+#### Success Behavior
+
+When parsing succeeds, the Resume record is updated with:
+
+| Field | Value |
+|---|---|
+| `rawText` | Mock extracted resume text |
+| `parsedData` | Parsed resume response from AI service |
+| `parserVersion` | `mock-resume-parser-v1` |
+| `parseStatus` | `SUCCESS` |
+| `parsingError` | `null` |
+
+The related Candidate record is also updated:
+
+| Field | Value |
+|---|---|
+| `normalizedProfile` | Parsed resume data |
+
+#### Failure Behavior
+
+If parsing fails, the Resume record is updated with:
+
+| Field | Value |
+|---|---|
+| `parseStatus` | `FAILED` |
+| `parsingError` | Error message |
+
+The API returns an error response using the shared error format.
+
+### GET /api/resumes/:id/parsed-data
+
+Returns parsing-related data for a resume.
+
+#### Returned Fields
+
+| Field | Purpose |
+|---|---|
+| `id` | Resume id |
+| `candidateId` | Owner candidate id |
+| `rawText` | Text used for parsing |
+| `parsedData` | Structured parsed resume data |
+| `parseStatus` | Current parsing status |
+| `parserVersion` | Parser version used |
+| `parsingError` | Parsing error message if failed |
+| `updatedAt` | Last update time |
+
+### Utility Files
+
+| File | Purpose |
+|---|---|
+| `resume-parsing.util.ts` | Builds mock raw text for the current MVP flow |
+| `resume-error.util.ts` | Extracts a safe parsing error message |
+| `resume-include.util.ts` | Reuses Prisma include config for Resume queries |
+
+### Notes
+
+- Frontend does not call the AI service directly.
+- Backend calls the AI service through `AiService.parseResume()`.
+- Resume remains the source of truth for `rawText`, `parsedData`, `parseStatus`, `parserVersion`, and `parsingError`.
+- Candidate `normalizedProfile` is updated after successful parsing.
+- Current parsing uses mock raw text. Real file text extraction should be added later.
