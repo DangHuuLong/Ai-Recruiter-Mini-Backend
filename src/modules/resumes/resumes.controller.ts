@@ -40,6 +40,26 @@ export class ResumesController {
     };
   }
 
+  @Post(':id/parse')
+  async parse(@Param('id') id: string) {
+    const resume = await this.resumesService.parse(id);
+
+    return {
+      message: 'Resume parsed successfully',
+      data: resume,
+    };
+  }
+
+  @Get(':id/parsed-data')
+  async getParsedData(@Param('id') id: string) {
+    const parsedData = await this.resumesService.getParsedData(id);
+
+    return {
+      message: 'Resume parsed data fetched successfully',
+      data: parsedData,
+    };
+  }
+
   @Patch(':id')
   async update(@Param('id') id: string, @Body() updateResumeDto: UpdateResumeDto) {
     const resume = await this.resumesService.update(id, updateResumeDto);

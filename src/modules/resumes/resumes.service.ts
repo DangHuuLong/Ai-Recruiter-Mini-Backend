@@ -4,6 +4,9 @@ import { FileAssetStatus, ParseStatus, Prisma } from '@prisma/client';
 import { CreateResumeDto } from './dto/create-resume.dto';
 import { ResumeQueryDto } from './dto/resume-query.dto';
 import { UpdateResumeDto } from './dto/update-resume.dto';
+import { getResumeParsingErrorMessage } from './utils/resume-error.util';
+import { getResumeInclude } from './utils/resume-include.util';
+import { buildMockResumeRawText } from './utils/resume-parsing.util';
 import { AppException } from '../../common/exceptions/app.exception';
 import {
   ensureCandidateExists,
@@ -11,10 +14,15 @@ import {
   ensureResumeExists,
 } from '../../common/utils/entity-exists.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
+import { AiService } from '../../integrations/ai/ai.service';
+const RESUME_PARSER_VERSION = 'mock-resume-parser-v1';
 
 @Injectable()
 export class ResumesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiService: AiService,
+  ) {}
 
   async create(createResumeDto: CreateResumeDto) {
     await ensureCandidateExists(this.prisma, createResumeDto.candidateId);
@@ -44,7 +52,7 @@ export class ResumesService {
         fileAssetId: createResumeDto.fileAssetId,
         parseStatus: ParseStatus.PENDING,
       },
-      include: this.getResumeInclude(),
+      include: getResumeInclude(),
     });
   }
 
@@ -66,7 +74,7 @@ export class ResumesService {
         orderBy: {
           [query.sortBy]: query.sortOrder,
         },
-        include: this.getResumeInclude(),
+        include: getResumeInclude(),
       }),
       this.prisma.resume.count({ where }),
     ]);
@@ -85,7 +93,85 @@ export class ResumesService {
   async findOne(id: string) {
     const resume = await this.prisma.resume.findUnique({
       where: { id },
-      include: this.getResumeInclude(),
+      include: getResumeInclude(),
+    });
+
+    if (!resume) {
+      throw new AppException('Resume not found', 404);
+    }
+
+    return resume;
+  }
+
+  async parse(id: string) {
+    const resume = await this.prisma.resume.findUnique({
+      where: { id },
+      include: getResumeInclude(),
+    });
+
+    if (!resume) {
+      throw new AppException('Resume not found', 404);
+    }
+
+    await this.prisma.resume.update({
+      where: { id },
+      data: {
+        parseStatus: ParseStatus.PROCESSING,
+        parsingError: null,
+      },
+    });
+
+    try {
+      const rawText = buildMockResumeRawText(resume);
+      const parsedData = await this.aiService.parseResume(rawText);
+
+      const updatedResume = await this.prisma.resume.update({
+        where: { id },
+        data: {
+          rawText,
+          parsedData: parsedData as unknown as Prisma.InputJsonValue,
+          parserVersion: RESUME_PARSER_VERSION,
+          parseStatus: ParseStatus.SUCCESS,
+          parsingError: null,
+        },
+        include: getResumeInclude(),
+      });
+
+      await this.updateCandidateNormalizedProfile(resume.candidateId, parsedData);
+
+      return updatedResume;
+    } catch (error) {
+      const parsingError = getResumeParsingErrorMessage(error);
+
+      await this.prisma.resume.update({
+        where: { id },
+        data: {
+          parseStatus: ParseStatus.FAILED,
+          parsingError,
+        },
+      });
+
+      if (error instanceof AppException) {
+        throw error;
+      }
+
+      throw new AppException('Resume parsing failed', 502);
+    }
+  }
+
+  async getParsedData(id: string) {
+    const resume = await this.prisma.resume.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        candidateId: true,
+        rawText: true,
+        parsedData: true,
+        parseStatus: true,
+        parserVersion: true,
+        parsingError: true,
+        updatedAt: true,
+      },
     });
 
     if (!resume) {
@@ -107,7 +193,7 @@ export class ResumesService {
         parserVersion: updateResumeDto.parserVersion,
         parsingError: updateResumeDto.parsingError,
       },
-      include: this.getResumeInclude(),
+      include: getResumeInclude(),
     });
   }
 
@@ -134,31 +220,12 @@ export class ResumesService {
     };
   }
 
-  private getResumeInclude() {
-    return {
-      candidate: {
-        select: {
-          id: true,
-          fullName: true,
-          primaryEmail: true,
-          primaryPhone: true,
-          location: true,
-        },
+  private async updateCandidateNormalizedProfile(candidateId: string, parsedData: unknown) {
+    await this.prisma.candidate.update({
+      where: { id: candidateId },
+      data: {
+        normalizedProfile: parsedData as Prisma.InputJsonValue,
       },
-      fileAsset: {
-        select: {
-          id: true,
-          fileName: true,
-          originalFileUrl: true,
-          storageKey: true,
-          fileType: true,
-          fileSizeBytes: true,
-          checksum: true,
-          bucket: true,
-          status: true,
-          uploadedAt: true,
-        },
-      },
-    };
+    });
   }
 }
