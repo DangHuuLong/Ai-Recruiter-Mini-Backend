@@ -43,6 +43,16 @@ export class SupabaseStorageService {
     return true;
   }
 
+  async downloadFile(storageKey: string, bucket = this.bucket): Promise<Buffer> {
+    const { data, error } = await this.client.storage.from(bucket).download(storageKey);
+
+    if (error || !data) {
+      throw new AppException(`Storage download failed: ${error?.message ?? 'File not found'}`, 502);
+    }
+
+    return Buffer.from(await data.arrayBuffer());
+  }
+
   getPublicUrl(storageKey: string) {
     const { data } = this.client.storage.from(this.bucket).getPublicUrl(storageKey);
 
