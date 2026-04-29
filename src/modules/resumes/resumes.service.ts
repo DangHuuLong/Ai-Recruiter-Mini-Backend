@@ -6,7 +6,6 @@ import { ResumeQueryDto } from './dto/resume-query.dto';
 import { UpdateResumeDto } from './dto/update-resume.dto';
 import { getResumeParsingErrorMessage } from './utils/resume-error.util';
 import { getResumeInclude } from './utils/resume-include.util';
-import { buildMockResumeRawText } from './utils/resume-parsing.util';
 import { AppException } from '../../common/exceptions/app.exception';
 import {
   ensureCandidateExists,
@@ -15,13 +14,18 @@ import {
 } from '../../common/utils/entity-exists.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AiService } from '../../integrations/ai/ai.service';
-const RESUME_PARSER_VERSION = 'mock-resume-parser-v1';
+import { ParsingService } from '../../integrations/parsing/parsing.service';
+import { SupabaseStorageService } from '../../integrations/storage/supabase-storage.service';
+
+const RESUME_PARSER_VERSION = 'backend-file-extraction-ai-parser-v1';
 
 @Injectable()
 export class ResumesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
+    private readonly parsingService: ParsingService,
+    private readonly storageService: SupabaseStorageService,
   ) {}
 
   async create(createResumeDto: CreateResumeDto) {
@@ -122,7 +126,14 @@ export class ResumesService {
     });
 
     try {
-      const rawText = buildMockResumeRawText(resume);
+      const fileBuffer = await this.storageService.downloadFile(
+        resume.fileAsset.storageKey,
+        resume.fileAsset.bucket,
+      );
+      const rawText = await this.parsingService.extractResumeText({
+        buffer: fileBuffer,
+        fileType: resume.fileAsset.fileType,
+      });
       const parsedData = await this.aiService.parseResume(rawText);
 
       const updatedResume = await this.prisma.resume.update({

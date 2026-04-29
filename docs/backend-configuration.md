@@ -1995,9 +1995,9 @@ Deletes a resume record if it is not linked to any application.
 
 This section documents the Backend resume parsing flow.
 
-The flow allows the Backend to trigger resume parsing, call the AI service, save parsed results, and expose parsed data for the Frontend.
+The flow allows the Backend to trigger resume parsing, extract text from the uploaded CV file, call the AI service, save parsed results, and expose parsed data for the Frontend.
 
-At this stage, the flow uses mock raw text and mock AI parsing. Real PDF/DOCX text extraction is not implemented yet.
+At this stage, the Backend extracts text from PDF/DOCX files stored through `FileAsset`, then sends the extracted `rawText` to the AI service.
 
 ---
 
@@ -2010,7 +2010,6 @@ src/modules/resumes/
 └── utils/
     ├── resume-error.util.ts
     ├── resume-include.util.ts
-    └── resume-parsing.util.ts
 
 src/integrations/ai/
 ├── ai.module.ts
@@ -2039,7 +2038,9 @@ Find Resume with Candidate and FileAsset
 ↓
 Set parseStatus = PROCESSING
 ↓
-Build mock rawText
+Download file from storage using FileAsset.storageKey
+â†“
+Extract rawText from PDF/DOCX based on FileAsset.fileType
 ↓
 Call AiService.parseResume(rawText)
 ↓
@@ -2062,9 +2063,9 @@ When parsing succeeds, the Resume record is updated with:
 
 | Field | Value |
 |---|---|
-| `rawText` | Mock extracted resume text |
+| `rawText` | Text extracted from the uploaded PDF/DOCX file |
 | `parsedData` | Parsed resume response from AI service |
-| `parserVersion` | `mock-resume-parser-v1` |
+| `parserVersion` | `backend-file-extraction-ai-parser-v1` |
 | `parseStatus` | `SUCCESS` |
 | `parsingError` | `null` |
 
@@ -2106,9 +2107,10 @@ Returns parsing-related data for a resume.
 
 | File | Purpose |
 |---|---|
-| `resume-parsing.util.ts` | Builds mock raw text for the current MVP flow |
 | `resume-error.util.ts` | Extracts a safe parsing error message |
 | `resume-include.util.ts` | Reuses Prisma include config for Resume queries |
+| `parsing.service.ts` | Extracts raw text from PDF/DOCX buffers |
+| `supabase-storage.service.ts` | Downloads uploaded resume files from storage |
 
 ### Notes
 
@@ -2116,4 +2118,6 @@ Returns parsing-related data for a resume.
 - Backend calls the AI service through `AiService.parseResume()`.
 - Resume remains the source of truth for `rawText`, `parsedData`, `parseStatus`, `parserVersion`, and `parsingError`.
 - Candidate `normalizedProfile` is updated after successful parsing.
-- Current parsing uses mock raw text. Real file text extraction should be added later.
+- The AI service receives `rawText`; uploaded files are not sent directly to the AI service in this flow.
+- PDF extraction depends on `pdf-parse`.
+- DOCX extraction depends on `mammoth`.
