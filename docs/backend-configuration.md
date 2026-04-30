@@ -2121,3 +2121,306 @@ Returns parsing-related data for a resume.
 - The AI service receives `rawText`; uploaded files are not sent directly to the AI service in this flow.
 - PDF extraction depends on `pdf-parse`.
 - DOCX extraction depends on `mammoth`.
+---
+
+## 33. PDF/DOCX Raw Text Extraction Improvements
+
+### Purpose
+
+This section documents the latest Backend work for receiving uploaded resume files and extracting reliable `rawText` before sending it to the AI service.
+
+The main goal of this update is to improve parsing quality for real PDF resumes where important project links are stored as PDF hyperlink annotations instead of visible text. Without these improvements, the AI service may receive incomplete raw text and may miss or misplace project URLs.
+
+---
+
+### Code Location
+
+```txt
+src/integrations/parsing/
+└── parsing.service.ts
+
+src/integrations/storage/
+└── supabase-storage.service.ts
+
+src/modules/resumes/
+├── resumes.controller.ts
+├── resumes.service.ts
+└── utils/
+    ├── resume-error.util.ts
+    └── resume-include.util.ts
+
+src/integrations/ai/
+├── ai.service.ts
+└── types/
+    └── ai-service.types.ts
+```
+
+### Main Responsibilities
+
+| Area | Responsibility |
+|---|---|
+| `ResumesService` | Controls resume parse flow and persists `rawText`, `parsedData`, `parseStatus`, `parserVersion`, and `parsingError` |
+| `SupabaseStorageService` | Downloads uploaded resume files from storage using `FileAsset.storageKey` |
+| `ParsingService` | Extracts text from PDF/DOCX buffers and normalizes extracted text |
+| `AiService` | Sends extracted `rawText` to the AI service through `parseResume()` |
+
+---
+
+### Supported File Extraction
+
+| File Type | Extraction Dependency | Behavior |
+|---|---|---|
+| PDF | `pdf-parse` | Extracts visible text from text-based PDF files |
+| PDF hyperlink annotations | `pdfjs-dist` and raw `/URI` fallback | Extracts embedded link annotations and injects them into `rawText` |
+| DOCX | `mammoth` | Extracts raw text from Word documents |
+
+---
+
+### Updated PDF Extraction Flow
+
+```txt
+Receive uploaded PDF buffer
+↓
+Extract visible text with pdf-parse
+↓
+Try extracting hyperlink annotations with pdfjs-dist
+↓
+If pdfjs-dist cannot extract annotations, fallback to raw PDF /URI scanning
+↓
+Normalize extracted URLs
+↓
+Inject URLs into the most relevant raw text location
+↓
+Normalize final rawText
+↓
+Return rawText to ResumesService
+```
+
+---
+
+### PDF Hyperlink Annotation Extraction
+
+Many CV PDFs display project links as clickable text, but the URL itself is not part of the visible text returned by `pdf-parse`.
+
+The Backend now extracts those URLs from PDF annotations so the final `rawText` can include links such as:
+
+```txt
+https://github.com/ThueCode/KaiSneaker
+https://github.com/nhkkhaii/CinemaNHK
+https://github.com/nhkkhaii/QLDA
+```
+
+This improves the AI service's ability to assign `projects[].url` correctly.
+
+---
+
+### Hyperlink Placement Rules
+
+The Backend no longer blindly appends every extracted hyperlink at the end of the raw text.
+
+The placement logic now follows this priority:
+
+```txt
+1. If the URL slug matches a project title, insert URL under that project title.
+2. If the annotation label is reliable, insert URL near the matching label.
+3. If the label is weak or ambiguous, do not trust it.
+4. If no safe placement exists, append the URL once at the end of rawText.
+```
+
+Example expected raw text:
+
+```txt
+KaiSneaker – E-commerce Website
+https://github.com/ThueCode/KaiSneaker
+Full Stack Developer
+Technologies: ReactJS (TypeScript), PostgreSQL, RESTful API, Java (Spring Boot)
+
+CinemaNHK – Movie Ticket Booking System
+https://github.com/nhkkhaii/CinemaNHK
+Full Stack Developer
+Technologies: C#, SQL Server, DevExpress, Microsoft Visual Studio
+```
+
+This prevents a URL from being injected into the wrong project description.
+
+---
+
+### Weak Annotation Labels
+
+Some PDF annotations may return labels that are too generic to be trusted.
+
+Examples of weak labels:
+
+```txt
+description
+key contributions
+key responsibilities
+link
+link github
+project
+projects
+technologies
+technology
+```
+
+These labels can appear multiple times across different projects. If the Backend trusts them directly, a project URL may be inserted after the first `Description:` line instead of the project it belongs to.
+
+The new behavior is:
+
+- Do not use weak labels as the primary placement signal.
+- Prefer GitHub repository slug matching against project title text.
+- Use label-based placement only when the label is specific enough.
+
+---
+
+### URL Slug Matching
+
+For GitHub repository URLs, the Backend extracts the repository slug from the URL path.
+
+Example:
+
+```txt
+https://github.com/nhkkhaii/CinemaNHK
+```
+
+Context token:
+
+```txt
+CinemaNHK
+```
+
+The Backend then searches the extracted PDF text for a matching line such as:
+
+```txt
+CinemaNHK – Movie Ticket Booking System
+```
+
+If found, the URL is inserted directly below that project title.
+
+This is especially useful for two-column or visual PDF layouts where annotation labels are unreliable.
+
+---
+
+### Raw PDF /URI Fallback
+
+If `pdfjs-dist` cannot extract PDF annotations, the Backend falls back to scanning the raw PDF source for `/URI` entries.
+
+This fallback supports URL values encoded as:
+
+- PDF literal strings
+- PDF hex strings
+
+The extracted URLs are normalized and de-duplicated before being injected into raw text.
+
+---
+
+### Raw Text Sanitization
+
+The Backend now sanitizes extracted resume text before persistence and before sending it to the AI service.
+
+Current normalization includes:
+
+- Removing null bytes (`\u0000`)
+- Converting Windows line endings to `\n`
+- Trimming repeated spaces and tabs
+- Removing empty lines
+- Returning a clean final `rawText`
+
+This prevents invalid characters from leaking into the AI service request or being persisted in `Resume.rawText`.
+
+---
+
+### Resume Parse Failure Handling
+
+When parsing fails, the Backend stores useful failure details instead of silently failing.
+
+Failure behavior:
+
+| Field | Value |
+|---|---|
+| `parseStatus` | `FAILED` |
+| `parsingError` | Safe extracted error message |
+
+The API still returns the shared error response format.
+
+This helps debugging parse failures caused by unreadable files, unsupported content, AI service errors, or unexpected extraction issues.
+
+---
+
+### Updated Parser Version
+
+Successful resume parsing stores:
+
+```txt
+backend-file-extraction-ai-parser-v1
+```
+
+in `Resume.parserVersion`.
+
+This version means:
+
+- Backend extracted the raw text from uploaded file.
+- Backend normalized the extracted text.
+- Backend sent `rawText` to AI service.
+- AI service returned structured parsed resume data.
+- Backend persisted both `rawText` and `parsedData`.
+
+---
+
+### Updated Parse Flow Summary
+
+```txt
+POST /api/resumes/:id/parse
+↓
+Find Resume with Candidate and FileAsset
+↓
+Download uploaded file from Supabase Storage
+↓
+Extract visible text from PDF/DOCX
+↓
+Extract PDF hyperlink annotations when available
+↓
+Inject project URLs into rawText using slug/title matching
+↓
+Sanitize rawText
+↓
+Send rawText to AI service
+↓
+Persist rawText and parsedData
+↓
+Set parseStatus = SUCCESS
+↓
+Update Candidate.normalizedProfile
+```
+
+---
+
+### Tests Added / Updated
+
+Recent Backend tests cover:
+
+| Test Area | Purpose |
+|---|---|
+| PDF hyperlink annotation extraction | Ensures URLs embedded in PDF annotations are extracted into raw text |
+| Duplicate hyperlink de-duplication | Ensures repeated PDF links are only included once |
+| Link placement by project slug | Ensures repository URLs are inserted under the matching project title |
+| Weak label handling | Ensures labels like `Description` are not used to place URLs incorrectly |
+| Null byte sanitization | Ensures `rawText` does not contain `\u0000` |
+| Resume parsing failure details | Ensures failed parsing updates `parseStatus` and `parsingError` |
+
+Run Backend tests:
+
+```bash
+npm test
+```
+
+---
+
+### Important Notes
+
+- The Backend still sends only `rawText` to the AI service.
+- Uploaded PDF/DOCX files are not sent directly to the AI service.
+- `Resume.rawText` is the exact text used for AI parsing after Backend extraction and normalization.
+- Better raw text directly improves AI service project parsing quality.
+- OCR for scanned PDFs is still not implemented.
+- Highly visual CVs may still require future extraction improvements.
