@@ -6,6 +6,18 @@ import { AppException } from '../../common/exceptions/app.exception';
 
 const requirePackage = createRequire(__filename);
 
+const WEAK_LINK_LABELS = new Set([
+  'description',
+  'key contributions',
+  'key responsibilities',
+  'link',
+  'link github',
+  'project',
+  'projects',
+  'technologies',
+  'technology',
+]);
+
 type MammothModule = {
   extractRawText(input: { buffer: Buffer }): Promise<{ value: string }>;
 };
@@ -230,8 +242,15 @@ export class ParsingService {
         continue;
       }
 
+      const projectTitleIndex = this.findUrlSlugLineIndex(lines, normalizedUrl, insertedLineIndexes);
+      if (projectTitleIndex >= 0) {
+        lines.splice(projectTitleIndex + 1, 0, normalizedUrl);
+        insertedLineIndexes.add(projectTitleIndex);
+        continue;
+      }
+
       const label = this.normalizeLinkLabel(hyperlink.label);
-      const insertionIndex = label ? this.findLinkLabelLineIndex(lines, label, insertedLineIndexes) : -1;
+      const insertionIndex = label && !this.isWeakLinkLabel(label) ? this.findLinkLabelLineIndex(lines, label, insertedLineIndexes) : -1;
 
       if (insertionIndex >= 0) {
         lines.splice(insertionIndex + 1, 0, normalizedUrl);
@@ -253,6 +272,61 @@ export class ParsingService {
       .replace(/[^a-z0-9]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private isWeakLinkLabel(normalizedLabel: string): boolean {
+    if (WEAK_LINK_LABELS.has(normalizedLabel)) {
+      return true;
+    }
+
+    return normalizedLabel.length < 4;
+  }
+
+  private findUrlSlugLineIndex(
+    lines: string[],
+    normalizedUrl: string,
+    insertedLineIndexes: Set<number>,
+  ): number {
+    const tokens = this.extractUrlContextTokens(normalizedUrl);
+    if (!tokens.length) {
+      return -1;
+    }
+
+    for (let index = 0; index < lines.length; index += 1) {
+      if (insertedLineIndexes.has(index)) {
+        continue;
+      }
+
+      const normalizedLine = this.normalizeLinkLabel(lines[index]);
+      if (!normalizedLine) {
+        continue;
+      }
+
+      if (tokens.some((token) => normalizedLine.includes(token))) {
+        return index;
+      }
+    }
+
+    return -1;
+  }
+
+  private extractUrlContextTokens(url: string): string[] {
+    try {
+      const parsedUrl = new URL(url);
+      const host = parsedUrl.hostname.toLowerCase();
+      const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+      const tokens: string[] = [];
+
+      if ((host === 'github.com' || host.endsWith('.github.com')) && pathParts.length >= 2) {
+        tokens.push(pathParts[1]);
+      } else if (host.endsWith('github.io')) {
+        tokens.push(...pathParts);
+      }
+
+      return this.uniqueInOrder(tokens.map((token) => this.normalizeLinkLabel(token)).filter((token) => token.length >= 4));
+    } catch {
+      return [];
+    }
   }
 
   private findLinkLabelLineIndex(
