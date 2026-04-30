@@ -1,3 +1,4 @@
+import { jest, describe, beforeEach, expect, it } from '@jest/globals';
 import { ResumeFileType } from '@prisma/client';
 
 import { AppException } from '../../common/exceptions/app.exception';
