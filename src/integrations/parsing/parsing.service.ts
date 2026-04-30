@@ -70,6 +70,7 @@ export class ParsingService {
 
   private normalizeExtractedText(text: string): string {
     return (text ?? '')
+      .replace(/\u0000/g, '')
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
       .split('\n')
