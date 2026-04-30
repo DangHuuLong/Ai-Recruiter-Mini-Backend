@@ -166,7 +166,7 @@ export class ResumesService {
         throw error;
       }
 
-      throw new AppException('Resume parsing failed', 502);
+      throw new AppException(parsingError, 502);
     }
   }
 
