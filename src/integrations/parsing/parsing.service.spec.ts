@@ -83,6 +83,49 @@ describe('ParsingService', () => {
     expect(result.match(/https:\/\/github\.com\/DangHuuLong/g)).toHaveLength(1);
   });
 
+  it('places GitHub repo hyperlinks under the matching project title', () => {
+    const text = [
+      'PROJECTS',
+      'KaiSneaker – E-commerce Website',
+      'Full Stack Developer',
+      'Technologies: ReactJS (TypeScript), PostgreSQL, RESTful API , Java (Spring Boot)',
+      '04/2022 – 06/2022',
+      'Description:',
+      'A modern e-commerce web application for selling sneakers with complete',
+      'frontend/backend integration.',
+      'CinemaNHK – Movie Ticket Booking System',
+      'Full Stack Developer',
+      'Technologies: C#, SQL Server, DevExpress, Microsoft Visual Studio',
+      '09/2021 – 12/2021',
+      'Description:',
+      'An desktop application for the booking and management of cinema tickets.',
+    ].join('\n');
+
+    const result = (service as unknown as {
+      injectHyperlinksIntoText(input: string, links: { url: string; label?: string }[]): string;
+    }).injectHyperlinksIntoText(text, [
+      { url: 'https://github.com/ThueCode/KaiSneaker', label: 'Description' },
+      { url: 'https://github.com/nhkkhaii/CinemaNHK', label: 'Description' },
+    ]);
+
+    const lines = result.split('\n');
+    const kaiSneakerTitleIndex = lines.indexOf('KaiSneaker – E-commerce Website');
+    const cinemaTitleIndex = lines.indexOf('CinemaNHK – Movie Ticket Booking System');
+
+    expect(lines[kaiSneakerTitleIndex + 1]).toBe('https://github.com/ThueCode/KaiSneaker');
+    expect(lines[cinemaTitleIndex + 1]).toBe('https://github.com/nhkkhaii/CinemaNHK');
+  });
+
+  it('does not inject weak labels like Description after the first matching label', () => {
+    const text = ['Project A', 'Description:', 'Project B', 'Description:'].join('\n');
+
+    const result = (service as unknown as {
+      injectHyperlinksIntoText(input: string, links: { url: string; label?: string }[]): string;
+    }).injectHyperlinksIntoText(text, [{ url: 'https://example.com/project-b', label: 'Description' }]);
+
+    expect(result.split('\n')).toEqual(['Project A', 'Description:', 'Project B', 'Description:', 'https://example.com/project-b']);
+  });
+
   it('extracts and normalizes text from DOCX buffers', async () => {
     const result = await service.extractResumeText({
       buffer: Buffer.from('docx'),
