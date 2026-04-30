@@ -10,6 +10,37 @@ type MammothModule = {
   extractRawText(input: { buffer: Buffer }): Promise<{ value: string }>;
 };
 
+type PdfHyperlink = {
+  url: string;
+  label?: string;
+};
+
+type PdfTextItem = {
+  str?: string;
+  transform?: number[];
+  width?: number;
+  height?: number;
+};
+
+type PdfAnnotation = {
+  url?: string;
+  unsafeUrl?: string;
+  rect?: number[];
+};
+
+type PdfJsModule = {
+  getDocument(input: { data: Uint8Array; disableWorker?: boolean }): {
+    promise: Promise<{
+      numPages: number;
+      getPage(pageNumber: number): Promise<{
+        getTextContent(): Promise<{ items?: PdfTextItem[] }>;
+        getAnnotations(params?: { intent?: string }): Promise<PdfAnnotation[]>;
+      }>;
+      destroy?: () => Promise<void> | void;
+    }>;
+  };
+};
+
 @Injectable()
 export class ParsingService {
   async extractResumeText(params: { buffer: Buffer; fileType: ResumeFileType }): Promise<string> {
@@ -40,9 +71,9 @@ export class ParsingService {
 
       try {
         const result = await parser.getText();
-        const hyperlinkText = this.extractPdfHyperlinkText(buffer);
+        const hyperlinks = await this.extractPdfHyperlinks(buffer);
 
-        return [result.text ?? '', hyperlinkText].filter(Boolean).join('\n');
+        return this.injectHyperlinksIntoText(result.text ?? '', hyperlinks);
       } finally {
         await parser.destroy?.();
       }
@@ -55,19 +86,119 @@ export class ParsingService {
     }
   }
 
-  private extractPdfHyperlinkText(buffer: Buffer): string {
-    const urls = this.extractPdfHyperlinkUrls(buffer);
+  private async extractPdfHyperlinks(buffer: Buffer): Promise<PdfHyperlink[]> {
+    const parsedLinks = await this.extractPdfHyperlinksWithPdfJs(buffer);
 
-    if (!urls.length) {
-      return '';
+    if (parsedLinks.length) {
+      return parsedLinks;
     }
 
-    return urls.join('\n');
+    return this.extractPdfHyperlinksFromRawSource(buffer);
   }
 
-  private extractPdfHyperlinkUrls(buffer: Buffer): string[] {
+  private async extractPdfHyperlinksWithPdfJs(buffer: Buffer): Promise<PdfHyperlink[]> {
+    let loadingTask:
+      | {
+          promise: Promise<{
+            numPages: number;
+            getPage(pageNumber: number): Promise<{
+              getTextContent(): Promise<{ items?: PdfTextItem[] }>;
+              getAnnotations(params?: { intent?: string }): Promise<PdfAnnotation[]>;
+            }>;
+            destroy?: () => Promise<void> | void;
+          }>;
+        }
+      | undefined;
+
+    try {
+      const pdfjs = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as PdfJsModule;
+      loadingTask = pdfjs.getDocument({
+        data: new Uint8Array(buffer),
+        disableWorker: true,
+      });
+      const document = await loadingTask.promise;
+      const links: PdfHyperlink[] = [];
+
+      try {
+        for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+          const page = await document.getPage(pageNumber);
+          const [textContent, annotations] = await Promise.all([
+            page.getTextContent(),
+            page.getAnnotations({ intent: 'display' }),
+          ]);
+
+          const textItems = textContent.items ?? [];
+          for (const annotation of annotations) {
+            const url = this.normalizeExtractedUrl(annotation.url ?? annotation.unsafeUrl ?? '');
+            if (!url) {
+              continue;
+            }
+
+            links.push({
+              url,
+              label: this.findAnnotationLabel(annotation.rect, textItems),
+            });
+          }
+        }
+      } finally {
+        await document.destroy?.();
+      }
+
+      return links;
+    } catch {
+      return [];
+    }
+  }
+
+  private findAnnotationLabel(rect: number[] | undefined, textItems: PdfTextItem[]): string | undefined {
+    if (!rect || rect.length < 4) {
+      return undefined;
+    }
+
+    const [x1, y1, x2, y2] = rect;
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+
+    const overlappingItems = textItems
+      .map((item) => {
+        const transform = item.transform ?? [];
+        const x = transform[4] ?? 0;
+        const y = transform[5] ?? 0;
+        const width = item.width ?? 0;
+        const height = Math.abs(item.height ?? transform[3] ?? 0);
+        const centerY = y + height / 2;
+
+        return {
+          text: item.str?.trim() ?? '',
+          x,
+          y,
+          width,
+          centerY,
+        };
+      })
+      .filter((item) => {
+        if (!item.text) {
+          return false;
+        }
+
+        const itemEndX = item.x + item.width;
+        const horizontallyOverlaps = itemEndX >= minX - 2 && item.x <= maxX + 2;
+        const verticallyOverlaps = item.centerY >= minY - 3 && item.centerY <= maxY + 3;
+
+        return horizontallyOverlaps && verticallyOverlaps;
+      })
+      .sort((left, right) => left.x - right.x);
+
+    const label = overlappingItems.map((item) => item.text).join(' ').replace(/\s+/g, ' ').trim();
+
+    return label || undefined;
+  }
+
+  private extractPdfHyperlinksFromRawSource(buffer: Buffer): PdfHyperlink[] {
     const pdfSource = buffer.toString('latin1');
-    const urls: string[] = [];
+    const links: PdfHyperlink[] = [];
     const uriPattern = /\/URI\s*(?:\((?<literal>(?:\\.|[^\\)])*)\)|<(?<hex>[0-9A-Fa-f\s]+)>)/g;
 
     for (const match of pdfSource.matchAll(uriPattern)) {
@@ -77,11 +208,81 @@ export class ParsingService {
 
       const url = this.normalizeExtractedUrl(rawUrl);
       if (url) {
-        urls.push(url);
+        links.push({ url });
       }
     }
 
-    return this.uniqueInOrder(urls);
+    return this.uniqueHyperlinksInOrder(links);
+  }
+
+  private injectHyperlinksIntoText(text: string, hyperlinks: PdfHyperlink[]): string {
+    if (!hyperlinks.length) {
+      return text;
+    }
+
+    const lines = (text ?? '').split(/\r?\n/);
+    const insertedLineIndexes = new Set<number>();
+    const unmatchedUrls: string[] = [];
+
+    for (const hyperlink of hyperlinks) {
+      const normalizedUrl = this.normalizeExtractedUrl(hyperlink.url);
+      if (!normalizedUrl || text.includes(normalizedUrl)) {
+        continue;
+      }
+
+      const label = this.normalizeLinkLabel(hyperlink.label);
+      const insertionIndex = label ? this.findLinkLabelLineIndex(lines, label, insertedLineIndexes) : -1;
+
+      if (insertionIndex >= 0) {
+        lines.splice(insertionIndex + 1, 0, normalizedUrl);
+        insertedLineIndexes.add(insertionIndex);
+        continue;
+      }
+
+      unmatchedUrls.push(normalizedUrl);
+    }
+
+    const dedupedUnmatchedUrls = this.uniqueInOrder(unmatchedUrls).filter((url) => !lines.includes(url));
+
+    return [...lines, ...dedupedUnmatchedUrls].join('\n');
+  }
+
+  private normalizeLinkLabel(value: string | undefined): string {
+    return (value ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private findLinkLabelLineIndex(
+    lines: string[],
+    normalizedLabel: string,
+    insertedLineIndexes: Set<number>,
+  ): number {
+    for (let index = 0; index < lines.length; index += 1) {
+      if (insertedLineIndexes.has(index)) {
+        continue;
+      }
+
+      const line = lines[index];
+      if (this.normalizeLinkLabel(line) === normalizedLabel) {
+        return index;
+      }
+    }
+
+    for (let index = 0; index < lines.length; index += 1) {
+      if (insertedLineIndexes.has(index)) {
+        continue;
+      }
+
+      const normalizedLine = this.normalizeLinkLabel(lines[index]);
+      if (normalizedLine.includes(normalizedLabel) || normalizedLabel.includes(normalizedLine)) {
+        return index;
+      }
+    }
+
+    return -1;
   }
 
   private decodePdfLiteralString(value: string): string {
@@ -138,6 +339,23 @@ export class ParsingService {
 
       seen.add(key);
       result.push(value);
+    }
+
+    return result;
+  }
+
+  private uniqueHyperlinksInOrder(links: PdfHyperlink[]): PdfHyperlink[] {
+    const seen = new Set<string>();
+    const result: PdfHyperlink[] = [];
+
+    for (const link of links) {
+      const key = `${link.label ?? ''}|${link.url}`.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      result.push(link);
     }
 
     return result;
