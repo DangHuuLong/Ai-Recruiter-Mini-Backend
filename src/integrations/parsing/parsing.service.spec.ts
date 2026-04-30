@@ -41,6 +41,47 @@ describe('ParsingService', () => {
     expect(result).toBe('John Doe\nPython FastAPI');
   });
 
+  it('appends PDF hyperlink annotation URLs to extracted text', async () => {
+    getTextMock.mockResolvedValueOnce({
+      text: 'Dang Huu Long\nLien ket\nGithub',
+    });
+
+    const pdfWithLink = Buffer.from(
+      '1 0 obj << /Type /Annot /Subtype /Link /A << /S /URI /URI (https://github.com/DangHuuLong) >> >> endobj',
+      'latin1',
+    );
+
+    const result = await service.extractResumeText({
+      buffer: pdfWithLink,
+      fileType: ResumeFileType.PDF,
+    });
+
+    expect(result).toContain('Dang Huu Long');
+    expect(result).toContain('Github');
+    expect(result).toContain('https://github.com/DangHuuLong');
+  });
+
+  it('deduplicates PDF hyperlink annotation URLs', async () => {
+    getTextMock.mockResolvedValueOnce({
+      text: 'Dang Huu Long\nGithub',
+    });
+
+    const pdfWithDuplicateLinks = Buffer.from(
+      [
+        '1 0 obj << /A << /S /URI /URI (https://github.com/DangHuuLong) >> >> endobj',
+        '2 0 obj << /A << /S /URI /URI (https://github.com/DangHuuLong) >> >> endobj',
+      ].join('\n'),
+      'latin1',
+    );
+
+    const result = await service.extractResumeText({
+      buffer: pdfWithDuplicateLinks,
+      fileType: ResumeFileType.PDF,
+    });
+
+    expect(result.match(/https:\/\/github\.com\/DangHuuLong/g)).toHaveLength(1);
+  });
+
   it('extracts and normalizes text from DOCX buffers', async () => {
     const result = await service.extractResumeText({
       buffer: Buffer.from('docx'),
