@@ -40,7 +40,9 @@ export class ParsingService {
 
       try {
         const result = await parser.getText();
-        return result.text ?? '';
+        const hyperlinkText = this.extractPdfHyperlinkText(buffer);
+
+        return [result.text ?? '', hyperlinkText].filter(Boolean).join('\n');
       } finally {
         await parser.destroy?.();
       }
@@ -51,6 +53,94 @@ export class ParsingService {
 
       throw new AppException('Failed to extract text from PDF file', 422);
     }
+  }
+
+  private extractPdfHyperlinkText(buffer: Buffer): string {
+    const urls = this.extractPdfHyperlinkUrls(buffer);
+
+    if (!urls.length) {
+      return '';
+    }
+
+    return urls.join('\n');
+  }
+
+  private extractPdfHyperlinkUrls(buffer: Buffer): string[] {
+    const pdfSource = buffer.toString('latin1');
+    const urls: string[] = [];
+    const uriPattern = /\/URI\s*(?:\((?<literal>(?:\\.|[^\\)])*)\)|<(?<hex>[0-9A-Fa-f\s]+)>)/g;
+
+    for (const match of pdfSource.matchAll(uriPattern)) {
+      const rawUrl = match.groups?.literal
+        ? this.decodePdfLiteralString(match.groups.literal)
+        : this.decodePdfHexString(match.groups?.hex ?? '');
+
+      const url = this.normalizeExtractedUrl(rawUrl);
+      if (url) {
+        urls.push(url);
+      }
+    }
+
+    return this.uniqueInOrder(urls);
+  }
+
+  private decodePdfLiteralString(value: string): string {
+    return value
+      .replace(/\\([nrtbf()\\])/g, (_, escaped: string) => {
+        const replacements: Record<string, string> = {
+          n: '\n',
+          r: '\r',
+          t: '\t',
+          b: '\b',
+          f: '\f',
+          '(': '(',
+          ')': ')',
+          '\\': '\\',
+        };
+
+        return replacements[escaped] ?? escaped;
+      })
+      .replace(/\\\r?\n/g, '')
+      .trim();
+  }
+
+  private decodePdfHexString(value: string): string {
+    const hex = value.replace(/\s+/g, '');
+    if (!hex || hex.length % 2 !== 0) {
+      return '';
+    }
+
+    try {
+      return Buffer.from(hex, 'hex').toString('utf8').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  private normalizeExtractedUrl(value: string): string | null {
+    const cleaned = value.trim().replace(/[\u0000\s]+$/g, '').replace(/[.,;)]+$/g, '');
+    if (!/^https?:\/\//i.test(cleaned)) {
+      return null;
+    }
+
+    return cleaned;
+  }
+
+  private uniqueInOrder(values: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const value of values) {
+      const key = value.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      result.push(value);
+    }
+
+    return result;
   }
 
   private async extractDocxText(buffer: Buffer): Promise<string> {
