@@ -162,7 +162,10 @@ export class ParsingService {
     }
   }
 
-  private findAnnotationLabel(rect: number[] | undefined, textItems: PdfTextItem[]): string | undefined {
+  private findAnnotationLabel(
+    rect: number[] | undefined,
+    textItems: PdfTextItem[],
+  ): string | undefined {
     if (!rect || rect.length < 4) {
       return undefined;
     }
@@ -203,7 +206,11 @@ export class ParsingService {
       })
       .sort((left, right) => left.x - right.x);
 
-    const label = overlappingItems.map((item) => item.text).join(' ').replace(/\s+/g, ' ').trim();
+    const label = overlappingItems
+      .map((item) => item.text)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     return label || undefined;
   }
@@ -242,7 +249,11 @@ export class ParsingService {
         continue;
       }
 
-      const projectTitleIndex = this.findUrlSlugLineIndex(lines, normalizedUrl, insertedLineIndexes);
+      const projectTitleIndex = this.findUrlSlugLineIndex(
+        lines,
+        normalizedUrl,
+        insertedLineIndexes,
+      );
       if (projectTitleIndex >= 0) {
         lines.splice(projectTitleIndex + 1, 0, normalizedUrl);
         insertedLineIndexes.add(projectTitleIndex);
@@ -250,7 +261,10 @@ export class ParsingService {
       }
 
       const label = this.normalizeLinkLabel(hyperlink.label);
-      const insertionIndex = label && !this.isWeakLinkLabel(label) ? this.findLinkLabelLineIndex(lines, label, insertedLineIndexes) : -1;
+      const insertionIndex =
+        label && !this.isWeakLinkLabel(label)
+          ? this.findLinkLabelLineIndex(lines, label, insertedLineIndexes)
+          : -1;
 
       if (insertionIndex >= 0) {
         lines.splice(insertionIndex + 1, 0, normalizedUrl);
@@ -261,7 +275,9 @@ export class ParsingService {
       unmatchedUrls.push(normalizedUrl);
     }
 
-    const dedupedUnmatchedUrls = this.uniqueInOrder(unmatchedUrls).filter((url) => !lines.includes(url));
+    const dedupedUnmatchedUrls = this.uniqueInOrder(unmatchedUrls).filter(
+      (url) => !lines.includes(url),
+    );
 
     return [...lines, ...dedupedUnmatchedUrls].join('\n');
   }
@@ -323,7 +339,9 @@ export class ParsingService {
         tokens.push(...pathParts);
       }
 
-      return this.uniqueInOrder(tokens.map((token) => this.normalizeLinkLabel(token)).filter((token) => token.length >= 4));
+      return this.uniqueInOrder(
+        tokens.map((token) => this.normalizeLinkLabel(token)).filter((token) => token.length >= 4),
+      );
     } catch {
       return [];
     }
@@ -393,7 +411,10 @@ export class ParsingService {
   }
 
   private normalizeExtractedUrl(value: string): string | null {
-    const cleaned = value.trim().replace(/[\u0000\s]+$/g, '').replace(/[.,;)]+$/g, '');
+    const cleaned = value
+      .trim()
+      .replace(/[\u0000\s]+$/g, '')
+      .replace(/[.,;)]+$/g, '');
     if (!/^https?:\/\//i.test(cleaned)) {
       return null;
     }
