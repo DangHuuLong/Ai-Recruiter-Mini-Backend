@@ -1,15 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ParseStatus, Prisma } from '@prisma/client';
 
 import { CreateJobDescriptionDto } from './dto/create-job-description.dto';
 import { JobDescriptionQueryDto } from './dto/job-description-query.dto';
 import { UpdateJobDescriptionDto } from './dto/update-job-description.dto';
 import { AppException } from '../../common/exceptions/app.exception';
 import { PrismaService } from '../../database/prisma/prisma.service';
+import { AiService } from '../../integrations/ai/ai.service';
+
+const JOB_DESCRIPTION_PARSER_VERSION = 'ai-job-description-parser-v1';
 
 @Injectable()
 export class JobDescriptionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiService: AiService,
+  ) {}
 
   async create(createJobDescriptionDto: CreateJobDescriptionDto) {
     if (createJobDescriptionDto.createdById) {
@@ -133,6 +139,91 @@ export class JobDescriptionsService {
     return jobDescription;
   }
 
+  async parse(id: string) {
+    const jobDescription = await this.prisma.jobDescription.findFirst({
+      where: {
+        id,
+        isActive: true,
+      },
+    });
+
+    if (!jobDescription) {
+      throw new AppException('Job description not found', 404);
+    }
+
+    await this.prisma.jobDescription.update({
+      where: { id },
+      data: {
+        parseStatus: ParseStatus.PROCESSING,
+        parsingError: null,
+      },
+    });
+
+    try {
+      const parsedData = await this.aiService.parseJobDescription(jobDescription.rawText);
+
+      return this.prisma.jobDescription.update({
+        where: { id },
+        data: {
+          parsedData: parsedData as unknown as Prisma.InputJsonValue,
+          parserVersion: JOB_DESCRIPTION_PARSER_VERSION,
+          parseStatus: ParseStatus.SUCCESS,
+          parsingError: null,
+        },
+        include: {
+          skills: true,
+          _count: {
+            select: {
+              applications: true,
+              evaluationConfigs: true,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      const parsingError = this.getParsingErrorMessage(error);
+
+      await this.prisma.jobDescription.update({
+        where: { id },
+        data: {
+          parseStatus: ParseStatus.FAILED,
+          parsingError,
+        },
+      });
+
+      if (error instanceof AppException) {
+        throw error;
+      }
+
+      throw new AppException(parsingError, 502);
+    }
+  }
+
+  async getParsedData(id: string) {
+    const jobDescription = await this.prisma.jobDescription.findFirst({
+      where: {
+        id,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        title: true,
+        rawText: true,
+        parsedData: true,
+        parseStatus: true,
+        parserVersion: true,
+        parsingError: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!jobDescription) {
+      throw new AppException('Job description not found', 404);
+    }
+
+    return jobDescription;
+  }
+
   async update(id: string, updateJobDescriptionDto: UpdateJobDescriptionDto) {
     await this.findOne(id);
 
@@ -160,5 +251,17 @@ export class JobDescriptionsService {
         isActive: false,
       },
     });
+  }
+
+  private getParsingErrorMessage(error: unknown): string {
+    if (error instanceof AppException) {
+      return error.message;
+    }
+
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return 'Failed to parse job description';
   }
 }
