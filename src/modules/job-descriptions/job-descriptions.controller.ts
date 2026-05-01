@@ -41,10 +41,7 @@ export class JobDescriptionsController {
   }
 
   @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() updateJobDescriptionDto: UpdateJobDescriptionDto,
-  ) {
+  async update(@Param('id') id: string, @Body() updateJobDescriptionDto: UpdateJobDescriptionDto) {
     const jobDescription = await this.jobDescriptionsService.update(id, updateJobDescriptionDto);
 
     return {

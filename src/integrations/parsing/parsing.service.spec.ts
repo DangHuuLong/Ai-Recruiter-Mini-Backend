@@ -1,8 +1,8 @@
 import { jest, describe, beforeEach, expect, it } from '@jest/globals';
 import { ResumeFileType } from '@prisma/client';
 
-import { AppException } from '../../common/exceptions/app.exception';
 import { ParsingService } from './parsing.service';
+import { AppException } from '../../common/exceptions/app.exception';
 
 const getTextMock = jest.fn(async () => ({
   text: ' John Doe \n\n Python FastAPI ',
@@ -101,9 +101,11 @@ describe('ParsingService', () => {
       'An desktop application for the booking and management of cinema tickets.',
     ].join('\n');
 
-    const result = (service as unknown as {
-      injectHyperlinksIntoText(input: string, links: { url: string; label?: string }[]): string;
-    }).injectHyperlinksIntoText(text, [
+    const result = (
+      service as unknown as {
+        injectHyperlinksIntoText(input: string, links: { url: string; label?: string }[]): string;
+      }
+    ).injectHyperlinksIntoText(text, [
       { url: 'https://github.com/ThueCode/KaiSneaker', label: 'Description' },
       { url: 'https://github.com/nhkkhaii/CinemaNHK', label: 'Description' },
     ]);
@@ -119,11 +121,21 @@ describe('ParsingService', () => {
   it('does not inject weak labels like Description after the first matching label', () => {
     const text = ['Project A', 'Description:', 'Project B', 'Description:'].join('\n');
 
-    const result = (service as unknown as {
-      injectHyperlinksIntoText(input: string, links: { url: string; label?: string }[]): string;
-    }).injectHyperlinksIntoText(text, [{ url: 'https://example.com/project-b', label: 'Description' }]);
+    const result = (
+      service as unknown as {
+        injectHyperlinksIntoText(input: string, links: { url: string; label?: string }[]): string;
+      }
+    ).injectHyperlinksIntoText(text, [
+      { url: 'https://example.com/project-b', label: 'Description' },
+    ]);
 
-    expect(result.split('\n')).toEqual(['Project A', 'Description:', 'Project B', 'Description:', 'https://example.com/project-b']);
+    expect(result.split('\n')).toEqual([
+      'Project A',
+      'Description:',
+      'Project B',
+      'Description:',
+      'https://example.com/project-b',
+    ]);
   });
 
   it('extracts and normalizes text from DOCX buffers', async () => {
