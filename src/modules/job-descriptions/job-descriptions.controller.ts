@@ -40,6 +40,26 @@ export class JobDescriptionsController {
     };
   }
 
+  @Post(':id/parse')
+  async parse(@Param('id') id: string) {
+    const jobDescription = await this.jobDescriptionsService.parse(id);
+
+    return {
+      message: 'Job description parsed successfully',
+      data: jobDescription,
+    };
+  }
+
+  @Get(':id/parsed-data')
+  async getParsedData(@Param('id') id: string) {
+    const parsedData = await this.jobDescriptionsService.getParsedData(id);
+
+    return {
+      message: 'Job description parsed data fetched successfully',
+      data: parsedData,
+    };
+  }
+
   @Patch(':id')
   async update(@Param('id') id: string, @Body() updateJobDescriptionDto: UpdateJobDescriptionDto) {
     const jobDescription = await this.jobDescriptionsService.update(id, updateJobDescriptionDto);
