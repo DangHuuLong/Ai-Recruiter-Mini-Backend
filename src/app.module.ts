@@ -13,6 +13,7 @@ import { StorageModule } from './integrations/storage/storage.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
+import { JobDescriptionsModule } from './modules/job-descriptions/job-descriptions.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
 
 @Module({
@@ -30,6 +31,7 @@ import { ResumesModule } from './modules/resumes/resumes.module';
     FilesModule,
     CandidatesModule,
     ResumesModule,
+    JobDescriptionsModule,
   ],
 })
 export class AppModule {}
