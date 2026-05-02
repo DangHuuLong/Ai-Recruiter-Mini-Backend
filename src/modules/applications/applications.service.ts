@@ -186,7 +186,7 @@ export class ApplicationsService {
       orderBy: {
         createdAt: 'desc',
       },
-      include: this.getApplicationInclude(),
+      select: this.getCandidateApplicationSummarySelect(),
     });
   }
 
@@ -290,6 +290,54 @@ export class ApplicationsService {
           email: true,
           fullName: true,
           role: true,
+        },
+      },
+      _count: {
+        select: {
+          evaluations: true,
+          events: true,
+        },
+      },
+    };
+  }
+
+  private getCandidateApplicationSummarySelect(): Prisma.ApplicationSelect {
+    return {
+      id: true,
+      candidateId: true,
+      jobDescriptionId: true,
+      resumeId: true,
+      status: true,
+      source: true,
+      appliedAt: true,
+      lastActivityAt: true,
+      notes: true,
+      createdAt: true,
+      updatedAt: true,
+      resume: {
+        select: {
+          id: true,
+          parseStatus: true,
+          uploadedAt: true,
+          fileAsset: {
+            select: {
+              id: true,
+              fileName: true,
+              fileType: true,
+            },
+          },
+        },
+      },
+      jobDescription: {
+        select: {
+          id: true,
+          title: true,
+          companyName: true,
+          department: true,
+          location: true,
+          employmentType: true,
+          seniority: true,
+          isActive: true,
         },
       },
       _count: {
