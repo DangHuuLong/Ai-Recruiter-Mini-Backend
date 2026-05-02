@@ -138,15 +138,20 @@ export class ApplicationsService {
         include: this.getApplicationInclude(),
       });
 
+      const eventData: Prisma.InputJsonObject = {
+        fromStatus: existingApplication.status,
+        toStatus: nextStatus,
+      };
+
+      if (updateApplicationStatusDto.note) {
+        eventData.note = updateApplicationStatusDto.note;
+      }
+
       await tx.applicationEvent.create({
         data: {
           applicationId: id,
           eventType: APPLICATION_EVENT_STATUS_CHANGED,
-          eventData: {
-            fromStatus: existingApplication.status,
-            toStatus: nextStatus,
-            note: updateApplicationStatusDto.note,
-          },
+          eventData,
         },
       });
 
