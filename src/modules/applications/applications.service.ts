@@ -141,11 +141,8 @@ export class ApplicationsService {
       const eventData: Prisma.InputJsonObject = {
         fromStatus: existingApplication.status,
         toStatus: nextStatus,
+        ...(updateApplicationStatusDto.note ? { note: updateApplicationStatusDto.note } : {}),
       };
-
-      if (updateApplicationStatusDto.note) {
-        eventData.note = updateApplicationStatusDto.note;
-      }
 
       await tx.applicationEvent.create({
         data: {
