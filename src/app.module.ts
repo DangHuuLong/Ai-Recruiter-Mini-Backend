@@ -10,6 +10,7 @@ import { PrismaModule } from './database/prisma/prisma.module';
 import { AiModule } from './integrations/ai/ai.module';
 import { RedisModule } from './integrations/redis/redis.module';
 import { StorageModule } from './integrations/storage/storage.module';
+import { ApplicationsModule } from './modules/applications/applications.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
@@ -32,6 +33,7 @@ import { ResumesModule } from './modules/resumes/resumes.module';
     CandidatesModule,
     ResumesModule,
     JobDescriptionsModule,
+    ApplicationsModule,
   ],
 })
 export class AppModule {}
