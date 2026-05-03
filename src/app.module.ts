@@ -12,6 +12,7 @@ import { RedisModule } from './integrations/redis/redis.module';
 import { StorageModule } from './integrations/storage/storage.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
+import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
 import { JobDescriptionsModule } from './modules/job-descriptions/job-descriptions.module';
@@ -34,6 +35,7 @@ import { ResumesModule } from './modules/resumes/resumes.module';
     ResumesModule,
     JobDescriptionsModule,
     ApplicationsModule,
+    EvaluationsModule,
   ],
 })
 export class AppModule {}
