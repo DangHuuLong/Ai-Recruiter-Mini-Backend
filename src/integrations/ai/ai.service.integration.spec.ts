@@ -5,7 +5,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { AiService } from './ai.service';
 
-describe('AiService Integration', () => {
+const shouldRunAiIntegrationTests = process.env.RUN_AI_INTEGRATION_TESTS === 'true';
+const describeAiIntegration = shouldRunAiIntegrationTests ? describe : describe.skip;
+
+describeAiIntegration('AiService Integration', () => {
   let service: AiService;
 
   beforeAll(async () => {
