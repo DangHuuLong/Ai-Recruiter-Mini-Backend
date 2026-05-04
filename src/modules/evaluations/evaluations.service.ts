@@ -79,7 +79,7 @@ export class EvaluationsService {
         orderBy: {
           [query.sortBy]: query.sortOrder,
         },
-        include: this.getEvaluationInclude(),
+        select: this.getEvaluationListSelect(),
       }),
       this.prisma.evaluation.count({ where }),
     ]);
@@ -114,7 +114,7 @@ export class EvaluationsService {
     return this.prisma.evaluation.findMany({
       where: { applicationId },
       orderBy: { createdAt: 'desc' },
-      include: this.getEvaluationInclude(),
+      select: this.getEvaluationListSelect(),
     });
   }
 
@@ -567,6 +567,65 @@ export class EvaluationsService {
     }
 
     return value as Prisma.InputJsonValue;
+  }
+
+  private getEvaluationListSelect(): Prisma.EvaluationSelect {
+    return {
+      id: true,
+      applicationId: true,
+      configId: true,
+      createdById: true,
+      status: true,
+      overallScore: true,
+      summary: true,
+      skillGapSummary: true,
+      evaluationError: true,
+      startedAt: true,
+      completedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      application: {
+        select: {
+          id: true,
+          status: true,
+          appliedAt: true,
+          lastActivityAt: true,
+          candidate: {
+            select: {
+              id: true,
+              fullName: true,
+              primaryEmail: true,
+              primaryPhone: true,
+            },
+          },
+          jobDescription: {
+            select: {
+              id: true,
+              title: true,
+              companyName: true,
+              department: true,
+            },
+          },
+        },
+      },
+      config: {
+        select: {
+          id: true,
+          name: true,
+          isDefault: true,
+          totalWeight: true,
+          version: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+        },
+      },
+    };
   }
 
   private getEvaluationInclude(): Prisma.EvaluationInclude {
