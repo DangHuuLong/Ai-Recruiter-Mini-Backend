@@ -7,6 +7,8 @@ import { AiService } from './ai.service';
 
 const shouldRunAiIntegrationTests = process.env.RUN_AI_INTEGRATION_TESTS === 'true';
 const describeAiIntegration = shouldRunAiIntegrationTests ? describe : describe.skip;
+const shouldRunResumeDocumentParseTest = Boolean(process.env.AI_RESUME_TEST_SIGNED_URL);
+const resumeDocumentParseIt = shouldRunResumeDocumentParseTest ? it : it.skip;
 
 describeAiIntegration('AiService Integration', () => {
   let service: AiService;
@@ -34,13 +36,19 @@ describeAiIntegration('AiService Integration', () => {
     expect(result.status).toBe('healthy');
   });
 
-  it('should call AI parse resume endpoint', async () => {
-    const result = await service.parseResume(
-      'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
-    );
+  resumeDocumentParseIt('should call AI parse resume endpoint with a document reference', async () => {
+    const result = await service.parseResume({
+      resume_id: 'integration-test-resume',
+      file_name: process.env.AI_RESUME_TEST_FILE_NAME || 'integration-test-resume.pdf',
+      file_type: (process.env.AI_RESUME_TEST_FILE_TYPE as 'PDF' | 'DOCX') || 'PDF',
+      signed_url: process.env.AI_RESUME_TEST_SIGNED_URL as string,
+      checksum: null,
+    });
 
-    expect(result.personal).toBeDefined();
-    expect(result.skills).toBeDefined();
+    expect(result.raw_text).toBeDefined();
+    expect(result.parsed_data.personal).toBeDefined();
+    expect(result.parsed_data.skills).toBeDefined();
+    expect(result.parser_version).toBeDefined();
   });
 
   it('should call AI parse job description endpoint', async () => {
@@ -52,9 +60,48 @@ describeAiIntegration('AiService Integration', () => {
   });
 
   it('should call AI score application endpoint', async () => {
-    const resume = await service.parseResume(
-      'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
-    );
+    const resume = shouldRunResumeDocumentParseTest
+      ? (
+          await service.parseResume({
+            resume_id: 'integration-test-resume',
+            file_name: process.env.AI_RESUME_TEST_FILE_NAME || 'integration-test-resume.pdf',
+            file_type: (process.env.AI_RESUME_TEST_FILE_TYPE as 'PDF' | 'DOCX') || 'PDF',
+            signed_url: process.env.AI_RESUME_TEST_SIGNED_URL as string,
+            checksum: null,
+          })
+        ).parsed_data
+      : {
+          personal: {
+            full_name: 'Nguyen Van A',
+            email: null,
+            phone: null,
+            location: null,
+            linkedin_url: null,
+            github_url: null,
+            portfolio_url: null,
+          },
+          summary: 'Backend developer with Python, FastAPI and PostgreSQL.',
+          skills: [
+            {
+              name: 'Python',
+              normalized_name: 'python',
+              category: 'language',
+              evidence: 'Python, FastAPI and PostgreSQL',
+            },
+            {
+              name: 'FastAPI',
+              normalized_name: 'fastapi',
+              category: 'framework',
+              evidence: 'Python, FastAPI and PostgreSQL',
+            },
+          ],
+          education: [],
+          experience: [],
+          projects: [],
+          certifications: [],
+          achievements: [],
+          languages: [],
+        };
 
     const jobDescription = await service.parseJobDescription(
       'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
