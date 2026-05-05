@@ -24,7 +24,20 @@ export interface AiHealthData {
 }
 
 export interface ParseResumeRequest {
+  resume_id: string;
+  file_name: string;
+  file_type: 'PDF' | 'DOCX';
+  signed_url: string;
+  checksum?: string | null;
+}
+
+export interface ParseResumeResult {
   raw_text: string;
+  parsed_data: ParsedResumeData;
+  parser_version: string;
+  warnings: string[];
+  confidence: number | null;
+  text_extraction_method: string;
 }
 
 export interface ParsedResumePersonalData {
