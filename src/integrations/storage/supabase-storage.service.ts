@@ -4,6 +4,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 import { AppException } from '../../common/exceptions/app.exception';
 
+const DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS = 15 * 60;
+
 @Injectable()
 export class SupabaseStorageService {
   private readonly client: SupabaseClient;
@@ -51,6 +53,25 @@ export class SupabaseStorageService {
     }
 
     return Buffer.from(await data.arrayBuffer());
+  }
+
+  async createSignedUrl(
+    storageKey: string,
+    bucket = this.bucket,
+    expiresInSeconds = DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS,
+  ): Promise<string> {
+    const { data, error } = await this.client.storage
+      .from(bucket)
+      .createSignedUrl(storageKey, expiresInSeconds);
+
+    if (error || !data?.signedUrl) {
+      throw new AppException(
+        `Storage signed URL creation failed: ${error?.message ?? 'Signed URL not available'}`,
+        502,
+      );
+    }
+
+    return data.signedUrl;
   }
 
   getPublicUrl(storageKey: string) {
