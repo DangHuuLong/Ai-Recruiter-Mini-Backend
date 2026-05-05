@@ -14,17 +14,13 @@ import {
 } from '../../common/utils/entity-exists.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AiService } from '../../integrations/ai/ai.service';
-import { ParsingService } from '../../integrations/parsing/parsing.service';
 import { SupabaseStorageService } from '../../integrations/storage/supabase-storage.service';
-
-const RESUME_PARSER_VERSION = 'backend-file-extraction-ai-parser-v1';
 
 @Injectable()
 export class ResumesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
-    private readonly parsingService: ParsingService,
     private readonly storageService: SupabaseStorageService,
   ) {}
 
@@ -126,29 +122,32 @@ export class ResumesService {
     });
 
     try {
-      const fileBuffer = await this.storageService.downloadFile(
+      const signedUrl = await this.storageService.createSignedUrl(
         resume.fileAsset.storageKey,
         resume.fileAsset.bucket,
       );
-      const rawText = await this.parsingService.extractResumeText({
-        buffer: fileBuffer,
-        fileType: resume.fileAsset.fileType,
+
+      const parseResult = await this.aiService.parseResume({
+        resume_id: resume.id,
+        file_name: resume.fileAsset.fileName,
+        file_type: resume.fileAsset.fileType,
+        signed_url: signedUrl,
+        checksum: resume.fileAsset.checksum,
       });
-      const parsedData = await this.aiService.parseResume(rawText);
 
       const updatedResume = await this.prisma.resume.update({
         where: { id },
         data: {
-          rawText,
-          parsedData: parsedData as unknown as Prisma.InputJsonValue,
-          parserVersion: RESUME_PARSER_VERSION,
+          rawText: parseResult.raw_text,
+          parsedData: parseResult.parsed_data as unknown as Prisma.InputJsonValue,
+          parserVersion: parseResult.parser_version,
           parseStatus: ParseStatus.SUCCESS,
           parsingError: null,
         },
         include: getResumeInclude(),
       });
 
-      await this.updateCandidateNormalizedProfile(resume.candidateId, parsedData);
+      await this.updateCandidateNormalizedProfile(resume.candidateId, parseResult.parsed_data);
 
       return updatedResume;
     } catch (error) {
