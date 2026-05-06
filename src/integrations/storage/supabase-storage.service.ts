@@ -53,6 +53,21 @@ export class SupabaseStorageService {
     return Buffer.from(await data.arrayBuffer());
   }
 
+  async createSignedUrl(storageKey: string, expiresIn = 300, bucket = this.bucket) {
+    const { data, error } = await this.client.storage
+      .from(bucket)
+      .createSignedUrl(storageKey, expiresIn);
+
+    if (error || !data?.signedUrl) {
+      throw new AppException(
+        `Storage signed URL failed: ${error?.message ?? 'No signed URL returned'}`,
+        502,
+      );
+    }
+
+    return data.signedUrl;
+  }
+
   getPublicUrl(storageKey: string) {
     const { data } = this.client.storage.from(this.bucket).getPublicUrl(storageKey);
 
