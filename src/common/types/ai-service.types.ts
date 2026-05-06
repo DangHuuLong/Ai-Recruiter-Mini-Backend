@@ -24,7 +24,11 @@ export interface AiHealthData {
 }
 
 export interface ParseResumeRequest {
-  raw_text: string;
+  resume_id: string;
+  file_name: string;
+  file_type: string;
+  signed_url: string;
+  checksum?: string | null;
 }
 
 export interface ParsedResumePersonalData {
@@ -54,6 +58,15 @@ export interface ParsedResumeData {
   certifications: unknown[];
   achievements: unknown[];
   languages: unknown[];
+}
+
+export interface ParseResumeResult {
+  raw_text: string;
+  parsed_data: ParsedResumeData;
+  parser_version: string;
+  warnings: string[];
+  confidence: number | null;
+  text_extraction_method: string;
 }
 
 export interface ParseJobDescriptionRequest {
