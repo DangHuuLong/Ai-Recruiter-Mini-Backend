@@ -8,6 +8,8 @@ import {
   AiHealthData,
   AiServiceResponse,
   EvaluationResult,
+  ParseResumeRequest,
+  ParseResumeResult,
   ParsedJobDescriptionData,
   ParsedResumeData,
   ScoreApplicationRequest,
@@ -30,12 +32,10 @@ export class AiService {
     });
   }
 
-  async parseResume(rawText: string): Promise<ParsedResumeData> {
-    return this.request<ParsedResumeData>('POST /parse/resume', async () => {
+  async parseResume(payload: ParseResumeRequest): Promise<ParseResumeResult> {
+    return this.request<ParseResumeResult>('POST /parse/resume', async () => {
       const response = await firstValueFrom(
-        this.httpService.post<AiServiceResponse<ParsedResumeData>>('/parse/resume', {
-          raw_text: rawText,
-        }),
+        this.httpService.post<AiServiceResponse<ParseResumeResult>>('/parse/resume', payload),
       );
 
       return this.extractData(response.data, 'Invalid AI parse resume response');

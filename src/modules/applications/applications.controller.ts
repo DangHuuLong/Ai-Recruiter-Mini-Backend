@@ -3,8 +3,8 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common
 import { ApplicationsService } from './applications.service';
 import { ApplicationQueryDto } from './dto/application-query.dto';
 import { CreateApplicationDto } from './dto/create-application.dto';
-import { UpdateApplicationDto } from './dto/update-application.dto';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
+import { UpdateApplicationDto } from './dto/update-application.dto';
 
 @Controller()
 export class ApplicationsController {

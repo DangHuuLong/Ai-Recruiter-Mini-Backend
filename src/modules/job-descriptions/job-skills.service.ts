@@ -46,11 +46,19 @@ export class JobSkillsService {
     await this.ensureActiveJobDescription(existingSkill.jobDescriptionId);
 
     const nextNormalizedName = this.normalizeSkillName(
-      updateJobSkillDto.normalizedName ?? updateJobSkillDto.name ?? existingSkill.normalizedName ?? existingSkill.name,
+      updateJobSkillDto.normalizedName ??
+        updateJobSkillDto.name ??
+        existingSkill.normalizedName ??
+        existingSkill.name,
     );
     const nextType = updateJobSkillDto.type ?? existingSkill.type;
 
-    await this.ensureSkillIsUnique(existingSkill.jobDescriptionId, nextNormalizedName, nextType, skillId);
+    await this.ensureSkillIsUnique(
+      existingSkill.jobDescriptionId,
+      nextNormalizedName,
+      nextType,
+      skillId,
+    );
 
     return this.prisma.jobSkill.update({
       where: { id: skillId },
@@ -85,8 +93,8 @@ export class JobSkillsService {
     for (const parsedSkill of dedupedSkills) {
       const existingSkill = existingSkills.find(
         (skill) =>
-          this.normalizeSkillName(skill.normalizedName ?? skill.name) === parsedSkill.normalizedName &&
-          skill.type === parsedSkill.type,
+          this.normalizeSkillName(skill.normalizedName ?? skill.name) ===
+            parsedSkill.normalizedName && skill.type === parsedSkill.type,
       );
 
       if (existingSkill) {

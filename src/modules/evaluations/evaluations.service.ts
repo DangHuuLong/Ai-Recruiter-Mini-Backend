@@ -1,10 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  CriterionName,
-  EvaluationStatus,
-  Prisma,
-  SkillMatchType,
-} from '@prisma/client';
+import { CriterionName, EvaluationStatus, Prisma, SkillMatchType } from '@prisma/client';
 
 import { CreateEvaluationDto } from './dto/create-evaluation.dto';
 import { EvaluationQueryDto } from './dto/evaluation-query.dto';
@@ -238,7 +233,11 @@ export class EvaluationsService {
     criteria: ScoreCriterionConfig[],
   ) {
     try {
-      const result = await this.aiService.scoreApplication(resumeData, jobDescriptionData, criteria);
+      const result = await this.aiService.scoreApplication(
+        resumeData,
+        jobDescriptionData,
+        criteria,
+      );
 
       return this.persistSuccessfulEvaluation(evaluationId, applicationId, result);
     } catch (error) {
@@ -411,7 +410,8 @@ export class EvaluationsService {
       configId: config?.id,
       criteria: config?.criteria ?? DEFAULT_CRITERIA,
       resumeData: application.resume.parsedData as unknown as ParsedResumeData,
-      jobDescriptionData: application.jobDescription.parsedData as unknown as ParsedJobDescriptionData,
+      jobDescriptionData: application.jobDescription
+        .parsedData as unknown as ParsedJobDescriptionData,
     };
   }
 
@@ -510,9 +510,7 @@ export class EvaluationsService {
     }
   }
 
-  private calculateOverallScore(
-    criterionRows: Array<{ scoreNormalized: number; weight: number }>,
-  ) {
+  private calculateOverallScore(criterionRows: Array<{ scoreNormalized: number; weight: number }>) {
     const score = criterionRows.reduce(
       (total, item) => total + item.scoreNormalized * item.weight * 100,
       0,
