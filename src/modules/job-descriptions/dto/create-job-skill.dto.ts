@@ -1,5 +1,14 @@
 import { JobSkillType } from '@prisma/client';
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class CreateJobSkillDto {
   @IsString()

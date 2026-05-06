@@ -71,18 +71,26 @@ export class JobDescriptionsService {
         skip,
         take: limit,
         orderBy: { [query.sortBy]: query.sortOrder },
-        include: { _count: { select: { applications: true, skills: true, evaluationConfigs: true } } },
+        include: {
+          _count: { select: { applications: true, skills: true, evaluationConfigs: true } },
+        },
       }),
       this.prisma.jobDescription.count({ where }),
     ]);
 
-    return { data: jobDescriptions, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    return {
+      data: jobDescriptions,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findOne(id: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
       where: { id, isActive: true },
-      include: { skills: true, _count: { select: { applications: true, evaluationConfigs: true } } },
+      include: {
+        skills: true,
+        _count: { select: { applications: true, evaluationConfigs: true } },
+      },
     });
 
     if (!jobDescription) {

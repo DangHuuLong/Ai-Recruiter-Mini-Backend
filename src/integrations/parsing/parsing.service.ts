@@ -413,7 +413,7 @@ export class ParsingService {
   private normalizeExtractedUrl(value: string): string | null {
     const cleaned = value
       .trim()
-      .replace(/[\u0000\s]+$/g, '')
+      .replace(/[\0\s]+$/g, '')
       .replace(/[.,;)]+$/g, '');
     if (!/^https?:\/\//i.test(cleaned)) {
       return null;
@@ -473,7 +473,7 @@ export class ParsingService {
 
   private normalizeExtractedText(text: string): string {
     return (text ?? '')
-      .replace(/\u0000/g, '')
+      .replace(/\0/g, '')
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
       .split('\n')

@@ -3,8 +3,8 @@ import { ApplicationStatus, Prisma } from '@prisma/client';
 
 import { ApplicationQueryDto } from './dto/application-query.dto';
 import { CreateApplicationDto } from './dto/create-application.dto';
-import { UpdateApplicationDto } from './dto/update-application.dto';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
+import { UpdateApplicationDto } from './dto/update-application.dto';
 import { AppException } from '../../common/exceptions/app.exception';
 import { PrismaService } from '../../database/prisma/prisma.service';
 
