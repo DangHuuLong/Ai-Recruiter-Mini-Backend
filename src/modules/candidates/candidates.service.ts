@@ -84,30 +84,10 @@ export class CandidatesService {
     const where: Prisma.CandidateWhereInput = query.search
       ? {
           OR: [
-            {
-              fullName: {
-                contains: query.search,
-                mode: 'insensitive',
-              },
-            },
-            {
-              primaryEmail: {
-                contains: query.search,
-                mode: 'insensitive',
-              },
-            },
-            {
-              primaryPhone: {
-                contains: query.search,
-                mode: 'insensitive',
-              },
-            },
-            {
-              location: {
-                contains: query.search,
-                mode: 'insensitive',
-              },
-            },
+            { fullName: { contains: query.search, mode: 'insensitive' } },
+            { primaryEmail: { contains: query.search, mode: 'insensitive' } },
+            { primaryPhone: { contains: query.search, mode: 'insensitive' } },
+            { location: { contains: query.search, mode: 'insensitive' } },
           ],
         }
       : {};
@@ -188,5 +168,18 @@ export class CandidatesService {
         },
       },
     });
+  }
+
+  async remove(id: string) {
+    await ensureCandidateExists(this.prisma, id);
+
+    await this.prisma.candidate.delete({
+      where: { id },
+    });
+
+    return {
+      id,
+      deleted: true,
+    };
   }
 }

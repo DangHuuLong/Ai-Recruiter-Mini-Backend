@@ -19,6 +19,10 @@ export class ResumeQueryDto {
 
   @IsOptional()
   @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
   candidateId?: string;
 
   @IsOptional()
@@ -26,8 +30,8 @@ export class ResumeQueryDto {
   parseStatus?: ParseStatusEnum;
 
   @IsOptional()
-  @IsIn(['createdAt', 'updatedAt'])
-  sortBy: 'createdAt' | 'updatedAt' = 'createdAt';
+  @IsIn(['createdAt', 'updatedAt', 'uploadedAt'])
+  sortBy: 'createdAt' | 'updatedAt' | 'uploadedAt' = 'createdAt';
 
   @IsOptional()
   @IsIn(['asc', 'desc'])

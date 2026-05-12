@@ -19,6 +19,10 @@ export class EvaluationQueryDto {
 
   @IsOptional()
   @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
   applicationId?: string;
 
   @IsOptional()
