@@ -19,6 +19,10 @@ export class ApplicationQueryDto {
 
   @IsOptional()
   @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
   candidateId?: string;
 
   @IsOptional()

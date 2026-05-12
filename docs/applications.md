@@ -247,6 +247,7 @@ Query parameters:
 |---|---:|---:|---|
 | `page` | number | `1` | Page number |
 | `limit` | number | `10` | Page size, max 100 |
+| `search` | string | — | Search by application id, source, notes, candidate, job description, or resume file name |
 | `candidateId` | string | — | Filter by candidate |
 | `jobDescriptionId` | string | — | Filter by job description |
 | `resumeId` | string | — | Filter by resume |
@@ -254,10 +255,19 @@ Query parameters:
 | `sortBy` | string | `createdAt` | `createdAt`, `updatedAt`, `appliedAt`, `lastActivityAt` |
 | `sortOrder` | string | `desc` | `asc` or `desc` |
 
+Search currently checks:
+
+- application `id`
+- `source`
+- `notes`
+- candidate `fullName`, `primaryEmail`, `primaryPhone`
+- job description `title`, `companyName`, `department`, `location`
+- resume file asset `fileName`
+
 Example:
 
 ```http
-GET /api/applications?page=1&limit=10&status=APPLIED
+GET /api/applications?page=1&limit=10&status=APPLIED&search=backend
 ```
 
 Successful response:

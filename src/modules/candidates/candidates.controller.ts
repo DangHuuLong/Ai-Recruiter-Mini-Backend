@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 
 import { CandidatesService } from './candidates.service';
 import { CandidateQueryDto } from './dto/candidate-query.dto';
@@ -57,6 +57,16 @@ export class CandidatesController {
     return {
       message: 'Candidate resumes fetched successfully',
       data: resumes,
+    };
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    const result = await this.candidatesService.remove(id);
+
+    return {
+      message: 'Candidate deleted successfully',
+      data: result,
     };
   }
 }

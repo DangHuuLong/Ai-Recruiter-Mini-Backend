@@ -87,6 +87,7 @@ POST /api/job-descriptions/:id/parse
    - save parserVersion
    - set parseStatus = SUCCESS
    - clear parsingError
+   - sync required and preferred skills into JobSkill rows
 -> If AI parsing fails:
    - set parseStatus = FAILED
    - save parsingError
@@ -183,7 +184,7 @@ The `parsedData` field is intended to store structured data extracted from the J
 
 At the current stage, the backend stores `parsedData` as returned by the AI Service.
 
-It does not yet automatically create or update `JobSkill` rows from `parsedData`.
+When parsing succeeds, the backend also syncs structured skill data from `parsedData` into `JobSkill` rows. `JobSkill` rows remain the preferred source of truth for skill matching and scoring.
 
 ## JobSkill Responsibility
 
@@ -204,7 +205,17 @@ A `JobSkill` can also include:
 
 These fields are useful for matching and scoring candidate resumes against the job description.
 
-Creating or syncing `JobSkill` rows from parsed JD data should be handled as a separate backend task.
+Creating or syncing `JobSkill` rows from parsed JD data is handled by `JobSkillsService.syncFromParsedData()` after a successful JD parse.
+
+The sync behavior:
+
+- maps required skills to `REQUIRED`
+- maps preferred skills to `PREFERRED`
+- normalizes skill names
+- deduplicates skills by type and normalized name
+- updates existing matching rows
+- creates missing rows
+- removes stale rows that are no longer present in the latest parsed data
 
 ## API Endpoints
 
@@ -218,6 +229,10 @@ PATCH  /api/job-descriptions/:id
 DELETE /api/job-descriptions/:id
 POST   /api/job-descriptions/:id/parse
 GET    /api/job-descriptions/:id/parsed-data
+GET    /api/job-descriptions/:id/skills
+POST   /api/job-descriptions/:id/skills
+PATCH  /api/job-skills/:skillId
+DELETE /api/job-skills/:skillId
 ```
 
 ## Delete Behavior
@@ -245,7 +260,6 @@ The current implementation does not yet support:
 - uploading JD files
 - parsing JD files from PDF or DOCX
 - automatic AI parsing during create/update
-- automatic `JobSkill` generation from parsed JD data
 - version history for edited job descriptions
 - archiving with reason or metadata
 - ownership or permission enforcement beyond `createdById`
@@ -310,4 +324,6 @@ After the AI Service implements `POST /parse/job-description`, the expected succ
    Expected: parseStatus = SUCCESS, parsedData is populated, parsingError = null
 4. GET /api/job-descriptions/:id/parsed-data
    Expected: parsedData returns the latest structured JD data
+5. GET /api/job-descriptions/:id/skills
+   Expected: synced required and preferred JobSkill rows are returned
 ```

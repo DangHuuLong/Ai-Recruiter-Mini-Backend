@@ -285,12 +285,29 @@ Supported filters:
 |---|---|
 | `page` | Current page |
 | `limit` | Page size |
+| `search` | Search by evaluation summary/error, candidate, job description, or config |
 | `applicationId` | Filter by application |
 | `configId` | Filter by evaluation config |
 | `createdById` | Filter by creator |
 | `status` | Filter by evaluation status |
 | `sortBy` | Sort field |
 | `sortOrder` | `asc` or `desc` |
+
+Search currently checks:
+
+- evaluation `id`
+- `summary`
+- `skillGapSummary`
+- `evaluationError`
+- application candidate `fullName`, `primaryEmail`, `primaryPhone`
+- application job description `title`, `companyName`, `department`
+- config `name`, `description`, `version`
+
+Example:
+
+```txt
+GET /api/evaluations?page=1&limit=10&status=COMPLETED&search=backend&sortBy=overallScore&sortOrder=desc
+```
 
 This endpoint must return a lightweight payload.
 

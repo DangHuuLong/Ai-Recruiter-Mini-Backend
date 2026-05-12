@@ -64,6 +64,47 @@ export class EvaluationsService {
       ...(query.configId ? { configId: query.configId } : {}),
       ...(query.createdById ? { createdById: query.createdById } : {}),
       ...(query.status ? { status: query.status as EvaluationStatus } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { id: { contains: query.search, mode: 'insensitive' } },
+              { summary: { contains: query.search, mode: 'insensitive' } },
+              { skillGapSummary: { contains: query.search, mode: 'insensitive' } },
+              { evaluationError: { contains: query.search, mode: 'insensitive' } },
+              {
+                application: {
+                  candidate: {
+                    OR: [
+                      { fullName: { contains: query.search, mode: 'insensitive' } },
+                      { primaryEmail: { contains: query.search, mode: 'insensitive' } },
+                      { primaryPhone: { contains: query.search, mode: 'insensitive' } },
+                    ],
+                  },
+                },
+              },
+              {
+                application: {
+                  jobDescription: {
+                    OR: [
+                      { title: { contains: query.search, mode: 'insensitive' } },
+                      { companyName: { contains: query.search, mode: 'insensitive' } },
+                      { department: { contains: query.search, mode: 'insensitive' } },
+                    ],
+                  },
+                },
+              },
+              {
+                config: {
+                  OR: [
+                    { name: { contains: query.search, mode: 'insensitive' } },
+                    { description: { contains: query.search, mode: 'insensitive' } },
+                    { version: { contains: query.search, mode: 'insensitive' } },
+                  ],
+                },
+              },
+            ],
+          }
+        : {}),
     };
 
     const [evaluations, total] = await this.prisma.$transaction([

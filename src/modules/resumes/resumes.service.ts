@@ -67,6 +67,31 @@ export class ResumesService {
     const where: Prisma.ResumeWhereInput = {
       ...(query.candidateId ? { candidateId: query.candidateId } : {}),
       ...(query.parseStatus ? { parseStatus: query.parseStatus as ParseStatus } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { id: { contains: query.search, mode: 'insensitive' } },
+              { rawText: { contains: query.search, mode: 'insensitive' } },
+              {
+                candidate: {
+                  OR: [
+                    { fullName: { contains: query.search, mode: 'insensitive' } },
+                    { primaryEmail: { contains: query.search, mode: 'insensitive' } },
+                    { primaryPhone: { contains: query.search, mode: 'insensitive' } },
+                  ],
+                },
+              },
+              {
+                fileAsset: {
+                  OR: [
+                    { fileName: { contains: query.search, mode: 'insensitive' } },
+                    { checksum: { contains: query.search, mode: 'insensitive' } },
+                  ],
+                },
+              },
+            ],
+          }
+        : {}),
     };
 
     const [resumes, total] = await this.prisma.$transaction([

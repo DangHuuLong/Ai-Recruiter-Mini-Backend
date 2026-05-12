@@ -67,6 +67,41 @@ export class ApplicationsService {
       ...(query.jobDescriptionId ? { jobDescriptionId: query.jobDescriptionId } : {}),
       ...(query.resumeId ? { resumeId: query.resumeId } : {}),
       ...(query.status ? { status: query.status as ApplicationStatus } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { id: { contains: query.search, mode: 'insensitive' } },
+              { source: { contains: query.search, mode: 'insensitive' } },
+              { notes: { contains: query.search, mode: 'insensitive' } },
+              {
+                candidate: {
+                  OR: [
+                    { fullName: { contains: query.search, mode: 'insensitive' } },
+                    { primaryEmail: { contains: query.search, mode: 'insensitive' } },
+                    { primaryPhone: { contains: query.search, mode: 'insensitive' } },
+                  ],
+                },
+              },
+              {
+                jobDescription: {
+                  OR: [
+                    { title: { contains: query.search, mode: 'insensitive' } },
+                    { companyName: { contains: query.search, mode: 'insensitive' } },
+                    { department: { contains: query.search, mode: 'insensitive' } },
+                    { location: { contains: query.search, mode: 'insensitive' } },
+                  ],
+                },
+              },
+              {
+                resume: {
+                  fileAsset: {
+                    fileName: { contains: query.search, mode: 'insensitive' },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
     };
 
     const [applications, total] = await this.prisma.$transaction([
