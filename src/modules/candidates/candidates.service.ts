@@ -173,6 +173,22 @@ export class CandidatesService {
   async remove(id: string) {
     await ensureCandidateExists(this.prisma, id);
 
+    const relatedCounts = await this.prisma.candidate.findUnique({
+      where: { id },
+      select: {
+        _count: {
+          select: {
+            resumes: true,
+            applications: true,
+          },
+        },
+      },
+    });
+
+    if (relatedCounts?._count.resumes || relatedCounts?._count.applications) {
+      throw new AppException('Candidate has related resumes or applications and cannot be deleted', 409);
+    }
+
     await this.prisma.candidate.delete({
       where: { id },
     });
