@@ -1,16 +1,27 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 
 import { CreateEvaluationDto } from './dto/create-evaluation.dto';
 import { EvaluationQueryDto } from './dto/evaluation-query.dto';
 import { EvaluationsService } from './evaluations.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller()
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class EvaluationsController {
   constructor(private readonly evaluationsService: EvaluationsService) {}
 
   @Post('evaluations')
-  async create(@Body() createEvaluationDto: CreateEvaluationDto) {
-    const evaluation = await this.evaluationsService.create(createEvaluationDto);
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  async create(
+    @Body() createEvaluationDto: CreateEvaluationDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    const evaluation = await this.evaluationsService.create(createEvaluationDto, currentUser.id);
 
     return {
       message: 'Evaluation created successfully',
@@ -19,6 +30,7 @@ export class EvaluationsController {
   }
 
   @Get('evaluations')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: EvaluationQueryDto) {
     const result = await this.evaluationsService.findAll(query);
 
@@ -30,6 +42,7 @@ export class EvaluationsController {
   }
 
   @Get('evaluations/:id')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string) {
     const evaluation = await this.evaluationsService.findOne(id);
 
@@ -40,6 +53,7 @@ export class EvaluationsController {
   }
 
   @Get('applications/:id/evaluations')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findByApplicationId(@Param('id') id: string) {
     const evaluations = await this.evaluationsService.findByApplicationId(id);
 
@@ -50,6 +64,7 @@ export class EvaluationsController {
   }
 
   @Get('evaluations/:id/breakdown')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findBreakdown(@Param('id') id: string) {
     const breakdown = await this.evaluationsService.findBreakdown(id);
 
@@ -60,6 +75,7 @@ export class EvaluationsController {
   }
 
   @Get('evaluations/:id/skills')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findSkills(@Param('id') id: string) {
     const skills = await this.evaluationsService.findSkills(id);
 
@@ -70,6 +86,7 @@ export class EvaluationsController {
   }
 
   @Get('evaluations/:id/interview-questions')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findInterviewQuestions(@Param('id') id: string) {
     const questions = await this.evaluationsService.findInterviewQuestions(id);
 
@@ -80,6 +97,7 @@ export class EvaluationsController {
   }
 
   @Get('evaluations/:id/evidence')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findEvidence(@Param('id') id: string) {
     const evidence = await this.evaluationsService.findEvidence(id);
 
@@ -90,8 +108,9 @@ export class EvaluationsController {
   }
 
   @Post('evaluations/:id/retry')
-  async retry(@Param('id') id: string) {
-    const evaluation = await this.evaluationsService.retry(id);
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  async retry(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const evaluation = await this.evaluationsService.retry(id, currentUser.id);
 
     return {
       message: 'Evaluation retry completed successfully',

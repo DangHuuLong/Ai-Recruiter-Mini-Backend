@@ -1,18 +1,29 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 
 import { ApplicationsService } from './applications.service';
 import { ApplicationQueryDto } from './dto/application-query.dto';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
 import { UpdateApplicationDto } from './dto/update-application.dto';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller()
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ApplicationsController {
   constructor(private readonly applicationsService: ApplicationsService) {}
 
   @Post('applications')
-  async create(@Body() createApplicationDto: CreateApplicationDto) {
-    const application = await this.applicationsService.create(createApplicationDto);
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  async create(
+    @Body() createApplicationDto: CreateApplicationDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    const application = await this.applicationsService.create(createApplicationDto, currentUser.id);
 
     return {
       message: 'Application created successfully',
@@ -21,6 +32,7 @@ export class ApplicationsController {
   }
 
   @Get('applications')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: ApplicationQueryDto) {
     const result = await this.applicationsService.findAll(query);
 
@@ -32,6 +44,7 @@ export class ApplicationsController {
   }
 
   @Get('applications/:id')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string) {
     const application = await this.applicationsService.findOne(id);
 
@@ -42,6 +55,7 @@ export class ApplicationsController {
   }
 
   @Patch('applications/:id')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(@Param('id') id: string, @Body() updateApplicationDto: UpdateApplicationDto) {
     const application = await this.applicationsService.update(id, updateApplicationDto);
 
@@ -52,6 +66,7 @@ export class ApplicationsController {
   }
 
   @Patch('applications/:id/status')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async updateStatus(
     @Param('id') id: string,
     @Body() updateApplicationStatusDto: UpdateApplicationStatusDto,
@@ -65,6 +80,7 @@ export class ApplicationsController {
   }
 
   @Get('applications/:id/events')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findEvents(@Param('id') id: string) {
     const events = await this.applicationsService.findEvents(id);
 
@@ -75,6 +91,7 @@ export class ApplicationsController {
   }
 
   @Get('candidates/:id/applications')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findByCandidateId(@Param('id') id: string) {
     const applications = await this.applicationsService.findByCandidateId(id);
 

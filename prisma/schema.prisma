@@ -82,13 +82,14 @@ enum CandidateIdentityConfidence {
 // ─────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  fullName  String?
-  role      UserRole @default(RECRUITER)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String?
+  role         UserRole @default(RECRUITER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   createdJobs              JobDescription[]   @relation("JobDescriptionCreatedBy")
   createdApplications      Application[]      @relation("ApplicationCreatedBy")

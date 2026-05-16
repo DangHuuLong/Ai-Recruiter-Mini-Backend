@@ -31,14 +31,14 @@ export class EvaluationsService {
     private readonly aiService: AiService,
   ) {}
 
-  async create(createEvaluationDto: CreateEvaluationDto) {
+  async create(createEvaluationDto: CreateEvaluationDto, currentUserId: string) {
     const context = await this.buildScoringContext(createEvaluationDto);
 
     const evaluation = await this.prisma.evaluation.create({
       data: {
         applicationId: context.application.id,
         configId: context.configId,
-        createdById: createEvaluationDto.createdById,
+        createdById: currentUserId,
         status: EvaluationStatus.PROCESSING,
         startedAt: new Date(),
       },
@@ -210,14 +210,13 @@ export class EvaluationsService {
     return evaluation;
   }
 
-  async retry(id: string) {
+  async retry(id: string, currentUserId: string) {
     const evaluation = await this.prisma.evaluation.findUnique({
       where: { id },
       select: {
         id: true,
         applicationId: true,
         configId: true,
-        createdById: true,
         status: true,
       },
     });
@@ -233,7 +232,6 @@ export class EvaluationsService {
     const context = await this.buildScoringContext({
       applicationId: evaluation.applicationId,
       configId: evaluation.configId ?? undefined,
-      createdById: evaluation.createdById ?? undefined,
     });
 
     await this.prisma.$transaction([
@@ -243,6 +241,7 @@ export class EvaluationsService {
       this.prisma.evaluation.update({
         where: { id },
         data: {
+          createdById: currentUserId,
           status: EvaluationStatus.PROCESSING,
           overallScore: null,
           summary: null,
@@ -403,7 +402,7 @@ export class EvaluationsService {
     });
   }
 
-  private async buildScoringContext(input: CreateEvaluationDto) {
+  private async buildScoringContext(input: Pick<CreateEvaluationDto, 'applicationId' | 'configId'>) {
     const application = await this.prisma.application.findUnique({
       where: { id: input.applicationId },
       include: {
@@ -438,10 +437,6 @@ export class EvaluationsService {
 
     if (application.jobDescription.skills.length === 0) {
       throw new AppException('Job description has no skills for evaluation', 409);
-    }
-
-    if (input.createdById) {
-      await this.ensureUserExists(input.createdById);
     }
 
     const config = await this.resolveEvaluationConfig(input.configId, application.jobDescriptionId);
@@ -537,17 +532,6 @@ export class EvaluationsService {
 
     if (!evaluation) {
       throw new AppException('Evaluation not found', 404);
-    }
-  }
-
-  private async ensureUserExists(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-
-    if (!user) {
-      throw new AppException('Created by user not found', 404);
     }
   }
 
