@@ -1,14 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 
 import { CreateJobSkillDto } from './dto/create-job-skill.dto';
 import { UpdateJobSkillDto } from './dto/update-job-skill.dto';
 import { JobSkillsService } from './job-skills.service';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @Controller()
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class JobSkillsController {
   constructor(private readonly jobSkillsService: JobSkillsService) {}
 
   @Get('job-descriptions/:id/skills')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findByJobDescription(@Param('id') id: string) {
     const skills = await this.jobSkillsService.findByJobDescription(id);
 
@@ -19,6 +25,7 @@ export class JobSkillsController {
   }
 
   @Post('job-descriptions/:id/skills')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(@Param('id') id: string, @Body() createJobSkillDto: CreateJobSkillDto) {
     const skill = await this.jobSkillsService.create(id, createJobSkillDto);
 
@@ -29,6 +36,7 @@ export class JobSkillsController {
   }
 
   @Patch('job-skills/:skillId')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(@Param('skillId') skillId: string, @Body() updateJobSkillDto: UpdateJobSkillDto) {
     const skill = await this.jobSkillsService.update(skillId, updateJobSkillDto);
 
@@ -39,6 +47,7 @@ export class JobSkillsController {
   }
 
   @Delete('job-skills/:skillId')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async remove(@Param('skillId') skillId: string) {
     const result = await this.jobSkillsService.remove(skillId);
 
