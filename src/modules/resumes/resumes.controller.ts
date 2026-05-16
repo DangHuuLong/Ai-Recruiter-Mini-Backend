@@ -1,15 +1,21 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 
 import { CreateResumeDto } from './dto/create-resume.dto';
 import { ResumeQueryDto } from './dto/resume-query.dto';
 import { UpdateResumeDto } from './dto/update-resume.dto';
 import { ResumesService } from './resumes.service';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @Controller('resumes')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ResumesController {
   constructor(private readonly resumesService: ResumesService) {}
 
   @Post()
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(@Body() createResumeDto: CreateResumeDto) {
     const resume = await this.resumesService.create(createResumeDto);
 
@@ -20,6 +26,7 @@ export class ResumesController {
   }
 
   @Get()
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: ResumeQueryDto) {
     const result = await this.resumesService.findAll(query);
 
@@ -31,6 +38,7 @@ export class ResumesController {
   }
 
   @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string) {
     const resume = await this.resumesService.findOne(id);
 
@@ -41,6 +49,7 @@ export class ResumesController {
   }
 
   @Post(':id/parse')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async parse(@Param('id') id: string) {
     const resume = await this.resumesService.parse(id);
 
@@ -51,6 +60,7 @@ export class ResumesController {
   }
 
   @Get(':id/parsed-data')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async getParsedData(@Param('id') id: string) {
     const parsedData = await this.resumesService.getParsedData(id);
 
@@ -61,6 +71,7 @@ export class ResumesController {
   }
 
   @Patch(':id')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(@Param('id') id: string, @Body() updateResumeDto: UpdateResumeDto) {
     const resume = await this.resumesService.update(id, updateResumeDto);
 
@@ -71,6 +82,7 @@ export class ResumesController {
   }
 
   @Delete(':id')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async remove(@Param('id') id: string) {
     const result = await this.resumesService.remove(id);
 
