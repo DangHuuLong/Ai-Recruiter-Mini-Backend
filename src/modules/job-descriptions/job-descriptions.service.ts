@@ -19,21 +19,10 @@ export class JobDescriptionsService {
     private readonly jobSkillsService: JobSkillsService,
   ) {}
 
-  async create(createJobDescriptionDto: CreateJobDescriptionDto) {
-    if (createJobDescriptionDto.createdById) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: createJobDescriptionDto.createdById },
-        select: { id: true },
-      });
-
-      if (!user) {
-        throw new AppException('Created by user not found', 404);
-      }
-    }
-
+  async create(createJobDescriptionDto: CreateJobDescriptionDto, currentUserId: string) {
     return this.prisma.jobDescription.create({
       data: {
-        createdById: createJobDescriptionDto.createdById,
+        createdById: currentUserId,
         title: createJobDescriptionDto.title,
         companyName: createJobDescriptionDto.companyName,
         department: createJobDescriptionDto.department,
