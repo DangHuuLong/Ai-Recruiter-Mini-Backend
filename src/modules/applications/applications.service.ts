@@ -15,16 +15,12 @@ const APPLICATION_EVENT_CREATED = 'APPLICATION_CREATED';
 export class ApplicationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createApplicationDto: CreateApplicationDto) {
+  async create(createApplicationDto: CreateApplicationDto, currentUserId: string) {
     await this.validateApplicationRelations(
       createApplicationDto.candidateId,
       createApplicationDto.resumeId,
       createApplicationDto.jobDescriptionId,
     );
-
-    if (createApplicationDto.createdById) {
-      await this.ensureUserExists(createApplicationDto.createdById);
-    }
 
     return this.prisma.$transaction(async (tx) => {
       const application = await tx.application.create({
@@ -32,7 +28,7 @@ export class ApplicationsService {
           candidateId: createApplicationDto.candidateId,
           jobDescriptionId: createApplicationDto.jobDescriptionId,
           resumeId: createApplicationDto.resumeId,
-          createdById: createApplicationDto.createdById,
+          createdById: currentUserId,
           source: createApplicationDto.source,
           notes: createApplicationDto.notes,
           lastActivityAt: new Date(),
@@ -49,6 +45,7 @@ export class ApplicationsService {
             candidateId: application.candidateId,
             resumeId: application.resumeId,
             jobDescriptionId: application.jobDescriptionId,
+            createdById: currentUserId,
           },
         },
       });
@@ -280,17 +277,6 @@ export class ApplicationsService {
     }
 
     return application;
-  }
-
-  private async ensureUserExists(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-
-    if (!user) {
-      throw new AppException('Created by user not found', 404);
-    }
   }
 
   private getApplicationInclude(): Prisma.ApplicationInclude {
