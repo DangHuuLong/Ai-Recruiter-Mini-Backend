@@ -11,12 +11,14 @@ import { AiModule } from './integrations/ai/ai.module';
 import { RedisModule } from './integrations/redis/redis.module';
 import { StorageModule } from './integrations/storage/storage.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
+import { AuthModule } from './modules/auth/auth.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
 import { JobDescriptionsModule } from './modules/job-descriptions/job-descriptions.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { ResumesModule } from './modules/resumes/resumes.module';
     RedisModule,
     HealthModule,
     AiModule,
+    AuthModule,
+    UsersModule,
     FilesModule,
     CandidatesModule,
     ResumesModule,
