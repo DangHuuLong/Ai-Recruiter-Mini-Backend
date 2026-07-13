@@ -27,10 +27,14 @@ export class ResumesService {
     private readonly storageService: SupabaseStorageService,
   ) {}
 
-  async create(createResumeDto: CreateResumeDto) {
-    await ensureCandidateExists(this.prisma, createResumeDto.candidateId);
+  async create(createResumeDto: CreateResumeDto, organizationId: string) {
+    await ensureCandidateExists(this.prisma, createResumeDto.candidateId, organizationId);
 
-    const fileAsset = await ensureFileAssetExists(this.prisma, createResumeDto.fileAssetId);
+    const fileAsset = await ensureFileAssetExists(
+      this.prisma,
+      createResumeDto.fileAssetId,
+      organizationId,
+    );
 
     if (fileAsset.status !== FileAssetStatus.ACTIVE) {
       throw new AppException('File asset is not active', 409);
@@ -59,12 +63,13 @@ export class ResumesService {
     });
   }
 
-  async findAll(query: ResumeQueryDto) {
+  async findAll(query: ResumeQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ResumeWhereInput = {
+      candidate: { organizationId },
       ...(query.candidateId ? { candidateId: query.candidateId } : {}),
       ...(query.parseStatus ? { parseStatus: query.parseStatus as ParseStatus } : {}),
       ...(query.search
@@ -118,9 +123,9 @@ export class ResumesService {
     };
   }
 
-  async findOne(id: string) {
-    const resume = await this.prisma.resume.findUnique({
-      where: { id },
+  async findOne(id: string, organizationId: string) {
+    const resume = await this.prisma.resume.findFirst({
+      where: { id, candidate: { organizationId } },
       include: getResumeInclude(),
     });
 
@@ -131,9 +136,9 @@ export class ResumesService {
     return resume;
   }
 
-  async parse(id: string) {
-    const resume = await this.prisma.resume.findUnique({
-      where: { id },
+  async parse(id: string, organizationId: string) {
+    const resume = await this.prisma.resume.findFirst({
+      where: { id, candidate: { organizationId } },
       include: getResumeInclude(),
     });
 
@@ -198,9 +203,9 @@ export class ResumesService {
     }
   }
 
-  async getParsedData(id: string) {
-    const resume = await this.prisma.resume.findUnique({
-      where: { id },
+  async getParsedData(id: string, organizationId: string) {
+    const resume = await this.prisma.resume.findFirst({
+      where: { id, candidate: { organizationId } },
       select: {
         id: true,
         candidateId: true,
@@ -220,8 +225,8 @@ export class ResumesService {
     return resume;
   }
 
-  async update(id: string, updateResumeDto: UpdateResumeDto) {
-    await ensureResumeExists(this.prisma, id);
+  async update(id: string, updateResumeDto: UpdateResumeDto, organizationId: string) {
+    await ensureResumeExists(this.prisma, id, organizationId);
 
     return this.prisma.resume.update({
       where: { id },
@@ -236,8 +241,8 @@ export class ResumesService {
     });
   }
 
-  async remove(id: string) {
-    await ensureResumeExists(this.prisma, id);
+  async remove(id: string, organizationId: string) {
+    await ensureResumeExists(this.prisma, id, organizationId);
 
     const relatedApplicationCount = await this.prisma.application.count({
       where: {
