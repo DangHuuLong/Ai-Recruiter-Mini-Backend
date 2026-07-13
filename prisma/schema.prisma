@@ -77,24 +77,76 @@ enum CandidateIdentityConfidence {
   LOW
 }
 
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+// ─────────────────────────────────────────────
+// ORGANIZATION (multi-tenant root)
+// ─────────────────────────────────────────────
+
+model Organization {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  billingEmail String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users             User[]
+  candidates        Candidate[]
+  jobDescriptions   JobDescription[]
+  applications      Application[]
+  evaluations       Evaluation[]
+  evaluationConfigs EvaluationConfig[]
+  fileAssets        FileAsset[]
+
+  @@index([slug])
+}
+
 // ─────────────────────────────────────────────
 // USER
 // ─────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  fullName     String?
-  role         UserRole @default(RECRUITER)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(cuid())
+  organizationId  String
+  email           String    @unique
+  passwordHash    String
+  fullName        String?
+  role            UserRole  @default(RECRUITER)
+  isActive        Boolean   @default(true)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   createdJobs              JobDescription[]   @relation("JobDescriptionCreatedBy")
   createdApplications      Application[]      @relation("ApplicationCreatedBy")
   createdEvaluations       Evaluation[]       @relation("EvaluationCreatedBy")
   createdEvaluationConfigs EvaluationConfig[] @relation("EvaluationConfigCreatedBy")
+  authTokens               AuthToken[]
+
+  @@index([organizationId])
+}
+
+// Verification/password-reset tokens. tokenHash stores a sha256 hash of the
+// raw token — the raw value is only ever sent to the user via email, never persisted.
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
 }
 
 // ─────────────────────────────────────────────
@@ -103,6 +155,7 @@ model User {
 
 model FileAsset {
   id              String          @id @default(cuid())
+  organizationId  String
   fileName        String
   originalFileUrl String
   storageKey      String          @unique
@@ -116,8 +169,10 @@ model FileAsset {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  resumes Resume[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  resumes      Resume[]
 
+  @@index([organizationId])
   @@index([fileType])
   @@index([checksum])
   @@index([status])
@@ -130,6 +185,7 @@ model FileAsset {
 
 model Candidate {
   id                 String                      @id @default(cuid())
+  organizationId     String
   fullName           String?
   primaryEmail       String?
   primaryPhone       String?
@@ -147,11 +203,13 @@ model Candidate {
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   resumes      Resume[]
   applications Application[]
 
-  @@index([primaryEmail])
-  @@index([primaryPhone])
+  @@index([organizationId])
+  @@index([organizationId, primaryEmail])
+  @@index([organizationId, primaryPhone])
   @@index([fullName])
 }
 
@@ -185,6 +243,7 @@ model Resume {
 
 model JobDescription {
   id             String      @id @default(cuid())
+  organizationId String
   createdById    String?
   title          String
   companyName    String?
@@ -203,11 +262,13 @@ model JobDescription {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy         User?              @relation("JobDescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   applications      Application[]
   skills            JobSkill[]
   evaluationConfigs EvaluationConfig[]
 
+  @@index([organizationId])
   @@index([createdById])
   @@index([title])
   @@index([companyName])
@@ -242,6 +303,7 @@ model JobSkill {
 // resumeId is required and must belong to the candidate — enforced at application layer.
 model Application {
   id               String            @id @default(cuid())
+  organizationId   String
   candidateId      String
   jobDescriptionId String
   resumeId         String
@@ -254,6 +316,7 @@ model Application {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   candidate      Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   jobDescription JobDescription     @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
   // onDelete: Restrict — do not allow deleting a resume that is tied to an application.
@@ -262,6 +325,7 @@ model Application {
   evaluations    Evaluation[]
   events         ApplicationEvent[]
 
+  @@index([organizationId])
   @@index([candidateId])
   @@index([jobDescriptionId])
   @@index([resumeId])
@@ -303,6 +367,7 @@ model ApplicationEvent {
 // totalWeight must equal 1.0. Enforced at application layer.
 model EvaluationConfig {
   id                 String   @id @default(cuid())
+  organizationId     String
   jobDescriptionId   String?
   createdById        String?
   name               String
@@ -315,10 +380,12 @@ model EvaluationConfig {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   jobDescription JobDescription? @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
   createdBy      User?           @relation("EvaluationConfigCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   evaluations    Evaluation[]
 
+  @@index([organizationId])
   @@index([jobDescriptionId])
   @@index([createdById])
   @@index([isDefault])
@@ -334,11 +401,12 @@ model EvaluationConfig {
 // overallScore range: 0.0–100.0
 // Computed as: Σ(criterionScore.scoreNormalized * criterionScore.weight) * 100
 model Evaluation {
-  id            String           @id @default(cuid())
-  applicationId String
-  configId      String?
-  createdById   String?
-  status        EvaluationStatus @default(PENDING)
+  id             String           @id @default(cuid())
+  organizationId String
+  applicationId  String
+  configId       String?
+  createdById    String?
+  status         EvaluationStatus @default(PENDING)
 
   // Final score 0.0–100.0. Derived from EvaluationCriterionScore rows.
   // EvaluationCriterionScore is source of truth — this field is a computed cache.
@@ -364,6 +432,7 @@ model Evaluation {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  organization          Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   application           Application                   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   config                EvaluationConfig?             @relation(fields: [configId], references: [id], onDelete: SetNull)
   createdBy             User?                         @relation("EvaluationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -371,6 +440,7 @@ model Evaluation {
   skills                EvaluationSkill[]
   interviewQuestionRows EvaluationInterviewQuestion[]
 
+  @@index([organizationId])
   @@index([applicationId])
   @@index([configId])
   @@index([createdById])
