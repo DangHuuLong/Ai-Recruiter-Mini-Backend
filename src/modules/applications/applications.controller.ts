@@ -10,7 +10,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { AuthUser } from '../../common/types/auth-user.type';
+import type { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -23,7 +23,11 @@ export class ApplicationsController {
     @Body() createApplicationDto: CreateApplicationDto,
     @CurrentUser() currentUser: AuthUser,
   ) {
-    const application = await this.applicationsService.create(createApplicationDto, currentUser.id);
+    const application = await this.applicationsService.create(
+      createApplicationDto,
+      currentUser.id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Application created successfully',
@@ -33,8 +37,8 @@ export class ApplicationsController {
 
   @Get('applications')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findAll(@Query() query: ApplicationQueryDto) {
-    const result = await this.applicationsService.findAll(query);
+  async findAll(@Query() query: ApplicationQueryDto, @CurrentUser() currentUser: AuthUser) {
+    const result = await this.applicationsService.findAll(query, currentUser.organizationId);
 
     return {
       message: 'Applications fetched successfully',
@@ -45,8 +49,8 @@ export class ApplicationsController {
 
   @Get('applications/:id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findOne(@Param('id') id: string) {
-    const application = await this.applicationsService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const application = await this.applicationsService.findOne(id, currentUser.organizationId);
 
     return {
       message: 'Application fetched successfully',
@@ -56,8 +60,16 @@ export class ApplicationsController {
 
   @Patch('applications/:id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
-  async update(@Param('id') id: string, @Body() updateApplicationDto: UpdateApplicationDto) {
-    const application = await this.applicationsService.update(id, updateApplicationDto);
+  async update(
+    @Param('id') id: string,
+    @Body() updateApplicationDto: UpdateApplicationDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    const application = await this.applicationsService.update(
+      id,
+      updateApplicationDto,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Application updated successfully',
@@ -70,8 +82,13 @@ export class ApplicationsController {
   async updateStatus(
     @Param('id') id: string,
     @Body() updateApplicationStatusDto: UpdateApplicationStatusDto,
+    @CurrentUser() currentUser: AuthUser,
   ) {
-    const application = await this.applicationsService.updateStatus(id, updateApplicationStatusDto);
+    const application = await this.applicationsService.updateStatus(
+      id,
+      updateApplicationStatusDto,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Application status updated successfully',
@@ -81,8 +98,8 @@ export class ApplicationsController {
 
   @Get('applications/:id/events')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findEvents(@Param('id') id: string) {
-    const events = await this.applicationsService.findEvents(id);
+  async findEvents(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const events = await this.applicationsService.findEvents(id, currentUser.organizationId);
 
     return {
       message: 'Application events fetched successfully',
@@ -92,8 +109,11 @@ export class ApplicationsController {
 
   @Get('candidates/:id/applications')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findByCandidateId(@Param('id') id: string) {
-    const applications = await this.applicationsService.findByCandidateId(id);
+  async findByCandidateId(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const applications = await this.applicationsService.findByCandidateId(
+      id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Candidate applications fetched successfully',
