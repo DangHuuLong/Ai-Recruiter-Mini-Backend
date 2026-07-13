@@ -33,8 +33,8 @@ export class SupabaseStorageService {
     return data;
   }
 
-  async removeFile(storageKey: string) {
-    const { error } = await this.client.storage.from(this.bucket).remove([storageKey]);
+  async removeFile(storageKey: string, bucket = this.bucket) {
+    const { error } = await this.client.storage.from(bucket).remove([storageKey]);
 
     if (error) {
       throw new AppException(`Storage delete failed: ${error.message}`, 500);
@@ -68,10 +68,14 @@ export class SupabaseStorageService {
     return data.signedUrl;
   }
 
-  getPublicUrl(storageKey: string) {
-    const { data } = this.client.storage.from(this.bucket).getPublicUrl(storageKey);
+  getPublicUrl(storageKey: string, bucket = this.bucket) {
+    const { data } = this.client.storage.from(bucket).getPublicUrl(storageKey);
 
     return data.publicUrl;
+  }
+
+  getDefaultBucket(): string {
+    return this.bucket;
   }
 
   async checkBucket() {
