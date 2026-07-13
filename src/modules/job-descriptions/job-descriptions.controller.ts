@@ -9,7 +9,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { AuthUser } from '../../common/types/auth-user.type';
+import type { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller('job-descriptions')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,6 +25,7 @@ export class JobDescriptionsController {
     const jobDescription = await this.jobDescriptionsService.create(
       createJobDescriptionDto,
       currentUser.id,
+      currentUser.organizationId,
     );
 
     return {
@@ -35,8 +36,8 @@ export class JobDescriptionsController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findAll(@Query() query: JobDescriptionQueryDto) {
-    const result = await this.jobDescriptionsService.findAll(query);
+  async findAll(@Query() query: JobDescriptionQueryDto, @CurrentUser() currentUser: AuthUser) {
+    const result = await this.jobDescriptionsService.findAll(query, currentUser.organizationId);
 
     return {
       message: 'Job descriptions fetched successfully',
@@ -47,8 +48,11 @@ export class JobDescriptionsController {
 
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findOne(@Param('id') id: string) {
-    const jobDescription = await this.jobDescriptionsService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const jobDescription = await this.jobDescriptionsService.findOne(
+      id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Job description fetched successfully',
@@ -58,8 +62,11 @@ export class JobDescriptionsController {
 
   @Post(':id/parse')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
-  async parse(@Param('id') id: string) {
-    const jobDescription = await this.jobDescriptionsService.parse(id);
+  async parse(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const jobDescription = await this.jobDescriptionsService.parse(
+      id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Job description parsed successfully',
@@ -69,8 +76,11 @@ export class JobDescriptionsController {
 
   @Get(':id/parsed-data')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async getParsedData(@Param('id') id: string) {
-    const parsedData = await this.jobDescriptionsService.getParsedData(id);
+  async getParsedData(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const parsedData = await this.jobDescriptionsService.getParsedData(
+      id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Job description parsed data fetched successfully',
@@ -80,8 +90,16 @@ export class JobDescriptionsController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
-  async update(@Param('id') id: string, @Body() updateJobDescriptionDto: UpdateJobDescriptionDto) {
-    const jobDescription = await this.jobDescriptionsService.update(id, updateJobDescriptionDto);
+  async update(
+    @Param('id') id: string,
+    @Body() updateJobDescriptionDto: UpdateJobDescriptionDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    const jobDescription = await this.jobDescriptionsService.update(
+      id,
+      updateJobDescriptionDto,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Job description updated successfully',
@@ -91,8 +109,11 @@ export class JobDescriptionsController {
 
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
-  async remove(@Param('id') id: string) {
-    const jobDescription = await this.jobDescriptionsService.deactivate(id);
+  async remove(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const jobDescription = await this.jobDescriptionsService.deactivate(
+      id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Job description deactivated successfully',
