@@ -42,9 +42,11 @@ export class JwtAuthGuard implements CanActivate {
       },
       select: {
         id: true,
+        organizationId: true,
         email: true,
         fullName: true,
         role: true,
+        emailVerifiedAt: true,
       },
     });
 
@@ -52,7 +54,17 @@ export class JwtAuthGuard implements CanActivate {
       throw new AppException('User is inactive or no longer exists', 401);
     }
 
-    request.user = user;
+    if (!user.emailVerifiedAt) {
+      throw new AppException('Email not verified', 403);
+    }
+
+    request.user = {
+      id: user.id,
+      organizationId: user.organizationId,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+    };
     return true;
   }
 
