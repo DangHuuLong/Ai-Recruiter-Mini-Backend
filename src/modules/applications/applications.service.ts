@@ -15,16 +15,22 @@ const APPLICATION_EVENT_CREATED = 'APPLICATION_CREATED';
 export class ApplicationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createApplicationDto: CreateApplicationDto, currentUserId: string) {
+  async create(
+    createApplicationDto: CreateApplicationDto,
+    currentUserId: string,
+    organizationId: string,
+  ) {
     await this.validateApplicationRelations(
       createApplicationDto.candidateId,
       createApplicationDto.resumeId,
       createApplicationDto.jobDescriptionId,
+      organizationId,
     );
 
     return this.prisma.$transaction(async (tx) => {
       const application = await tx.application.create({
         data: {
+          organizationId,
           candidateId: createApplicationDto.candidateId,
           jobDescriptionId: createApplicationDto.jobDescriptionId,
           resumeId: createApplicationDto.resumeId,
@@ -54,12 +60,13 @@ export class ApplicationsService {
     });
   }
 
-  async findAll(query: ApplicationQueryDto) {
+  async findAll(query: ApplicationQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ApplicationWhereInput = {
+      organizationId,
       ...(query.candidateId ? { candidateId: query.candidateId } : {}),
       ...(query.jobDescriptionId ? { jobDescriptionId: query.jobDescriptionId } : {}),
       ...(query.resumeId ? { resumeId: query.resumeId } : {}),
@@ -125,9 +132,9 @@ export class ApplicationsService {
     };
   }
 
-  async findOne(id: string) {
-    const application = await this.prisma.application.findUnique({
-      where: { id },
+  async findOne(id: string, organizationId: string) {
+    const application = await this.prisma.application.findFirst({
+      where: { id, organizationId },
       include: this.getApplicationInclude(),
     });
 
@@ -138,8 +145,8 @@ export class ApplicationsService {
     return application;
   }
 
-  async update(id: string, updateApplicationDto: UpdateApplicationDto) {
-    await this.ensureApplicationExists(id);
+  async update(id: string, updateApplicationDto: UpdateApplicationDto, organizationId: string) {
+    await this.ensureApplicationExists(id, organizationId);
 
     return this.prisma.application.update({
       where: { id },
@@ -152,12 +159,16 @@ export class ApplicationsService {
     });
   }
 
-  async updateStatus(id: string, updateApplicationStatusDto: UpdateApplicationStatusDto) {
-    const existingApplication = await this.ensureApplicationExists(id);
+  async updateStatus(
+    id: string,
+    updateApplicationStatusDto: UpdateApplicationStatusDto,
+    organizationId: string,
+  ) {
+    const existingApplication = await this.ensureApplicationExists(id, organizationId);
     const nextStatus = updateApplicationStatusDto.status as ApplicationStatus;
 
     if (existingApplication.status === nextStatus) {
-      return this.findOne(id);
+      return this.findOne(id, organizationId);
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -188,8 +199,8 @@ export class ApplicationsService {
     });
   }
 
-  async findEvents(id: string) {
-    await this.ensureApplicationExists(id);
+  async findEvents(id: string, organizationId: string) {
+    await this.ensureApplicationExists(id, organizationId);
 
     return this.prisma.applicationEvent.findMany({
       where: {
@@ -201,9 +212,9 @@ export class ApplicationsService {
     });
   }
 
-  async findByCandidateId(candidateId: string) {
-    const candidate = await this.prisma.candidate.findUnique({
-      where: { id: candidateId },
+  async findByCandidateId(candidateId: string, organizationId: string) {
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, organizationId },
       select: { id: true },
     });
 
@@ -226,18 +237,19 @@ export class ApplicationsService {
     candidateId: string,
     resumeId: string,
     jobDescriptionId: string,
+    organizationId: string,
   ) {
     const [candidate, resume, jobDescription] = await this.prisma.$transaction([
-      this.prisma.candidate.findUnique({
-        where: { id: candidateId },
+      this.prisma.candidate.findFirst({
+        where: { id: candidateId, organizationId },
         select: { id: true },
       }),
-      this.prisma.resume.findUnique({
-        where: { id: resumeId },
+      this.prisma.resume.findFirst({
+        where: { id: resumeId, candidate: { organizationId } },
         select: { id: true, candidateId: true },
       }),
-      this.prisma.jobDescription.findUnique({
-        where: { id: jobDescriptionId },
+      this.prisma.jobDescription.findFirst({
+        where: { id: jobDescriptionId, organizationId },
         select: { id: true, isActive: true },
       }),
     ]);
@@ -263,9 +275,9 @@ export class ApplicationsService {
     }
   }
 
-  private async ensureApplicationExists(id: string) {
-    const application = await this.prisma.application.findUnique({
-      where: { id },
+  private async ensureApplicationExists(id: string, organizationId: string) {
+    const application = await this.prisma.application.findFirst({
+      where: { id, organizationId },
       select: {
         id: true,
         status: true,

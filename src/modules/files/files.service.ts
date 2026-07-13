@@ -1,11 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileAssetStatus } from '@prisma/client';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 import {
   DEFAULT_MAX_FILE_SIZE_MB,
-  DEFAULT_UPLOAD_BUCKET,
 } from '../../common/constants/upload.constants';
 import { AppException } from '../../common/exceptions/app.exception';
 import type { UploadFileInput } from '../../common/types/upload-file.type';
@@ -17,35 +15,24 @@ import {
   resolveResumeFileType,
 } from '../../common/utils/upload-file.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
+import { SupabaseStorageService } from '../../integrations/storage/supabase-storage.service';
 
 @Injectable()
 export class FilesService {
-  private readonly supabase: SupabaseClient;
-  private readonly bucket: string;
   private readonly maxFileSizeBytes: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly storageService: SupabaseStorageService,
   ) {
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseServiceRoleKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-      throw new AppException('Supabase configuration is missing', 500);
-    }
-
-    this.supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
-
-    this.bucket = this.configService.get<string>('SUPABASE_BUCKET') || DEFAULT_UPLOAD_BUCKET;
-
     const maxFileSizeMb =
       Number(this.configService.get<number>('MAX_FILE_SIZE_MB')) || DEFAULT_MAX_FILE_SIZE_MB;
 
     this.maxFileSizeBytes = getMaxUploadFileSizeBytes(maxFileSizeMb);
   }
 
-  async uploadFile(file?: UploadFileInput) {
+  async uploadFile(organizationId: string, file?: UploadFileInput) {
     if (!file) {
       throw new AppException('File is required', 400);
     }
@@ -69,38 +56,36 @@ export class FilesService {
     }
 
     const checksum = calculateFileChecksum(file.buffer);
+    const bucket = this.storageService.getDefaultBucket();
 
-    const { error: uploadError } = await this.supabase.storage
-      .from(this.bucket)
-      .upload(storageKey, file.buffer, {
-        contentType: file.mimeType,
-        upsert: false,
-      });
+    await this.storageService.uploadFile({
+      storageKey,
+      buffer: file.buffer,
+      contentType: file.mimeType,
+    });
 
-    if (uploadError) {
-      throw new AppException('Failed to upload file to storage', 502);
-    }
-
-    const { data } = this.supabase.storage.from(this.bucket).getPublicUrl(storageKey);
+    const originalFileUrl = this.storageService.getPublicUrl(storageKey);
 
     return this.prisma.fileAsset.create({
       data: {
+        organizationId,
         fileName: file.originalName,
-        originalFileUrl: data.publicUrl,
+        originalFileUrl,
         storageKey,
         fileType,
         fileSizeBytes: file.size,
         checksum,
-        bucket: this.bucket,
+        bucket,
         status: FileAssetStatus.ACTIVE,
       },
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, organizationId: string) {
     const fileAsset = await this.prisma.fileAsset.findFirst({
       where: {
         id,
+        organizationId,
         status: FileAssetStatus.ACTIVE,
       },
     });
@@ -112,10 +97,11 @@ export class FilesService {
     return fileAsset;
   }
 
-  async remove(id: string) {
+  async remove(id: string, organizationId: string) {
     const fileAsset = await this.prisma.fileAsset.findFirst({
       where: {
         id,
+        organizationId,
         status: FileAssetStatus.ACTIVE,
       },
       include: {
@@ -135,13 +121,7 @@ export class FilesService {
       throw new AppException('File is already linked to a resume', 409);
     }
 
-    const { error: deleteError } = await this.supabase.storage
-      .from(fileAsset.bucket)
-      .remove([fileAsset.storageKey]);
-
-    if (deleteError) {
-      throw new AppException('Failed to delete file from storage', 502);
-    }
+    await this.storageService.removeFile(fileAsset.storageKey, fileAsset.bucket);
 
     await this.prisma.fileAsset.update({
       where: {

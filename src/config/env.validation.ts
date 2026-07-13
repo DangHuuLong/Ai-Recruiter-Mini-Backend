@@ -22,4 +22,16 @@ export const envValidationSchema = Joi.object({
   AI_SERVICE_URL: Joi.string().uri().default('http://localhost:8000'),
 
   AI_REQUEST_TIMEOUT_MS: Joi.number().integer().positive().default(30000),
+
+  JWT_SECRET: Joi.string().min(16).required(),
+  JWT_EXPIRES_IN_SECONDS: Joi.number().integer().positive().default(86400),
+  
+  SMTP_HOST: Joi.string().optional(),
+  SMTP_PORT: Joi.number().optional(),
+  SMTP_USER: Joi.string().optional(),
+  SMTP_PASSWORD: Joi.string().optional(),
+  EMAIL_FROM: Joi.string().optional(),
+  FRONTEND_URL: Joi.string().uri().default('http://localhost:3001'),
+  EMAIL_VERIFICATION_TOKEN_TTL_SECONDS: Joi.number().integer().positive().default(86400),
+  PASSWORD_RESET_TOKEN_TTL_SECONDS: Joi.number().integer().positive().default(3600),
 });

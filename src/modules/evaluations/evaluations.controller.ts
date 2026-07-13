@@ -8,7 +8,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { AuthUser } from '../../common/types/auth-user.type';
+import type { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,7 +21,11 @@ export class EvaluationsController {
     @Body() createEvaluationDto: CreateEvaluationDto,
     @CurrentUser() currentUser: AuthUser,
   ) {
-    const evaluation = await this.evaluationsService.create(createEvaluationDto, currentUser.id);
+    const evaluation = await this.evaluationsService.create(
+      createEvaluationDto,
+      currentUser.id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Evaluation created successfully',
@@ -31,8 +35,8 @@ export class EvaluationsController {
 
   @Get('evaluations')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findAll(@Query() query: EvaluationQueryDto) {
-    const result = await this.evaluationsService.findAll(query);
+  async findAll(@Query() query: EvaluationQueryDto, @CurrentUser() currentUser: AuthUser) {
+    const result = await this.evaluationsService.findAll(query, currentUser.organizationId);
 
     return {
       message: 'Evaluations fetched successfully',
@@ -43,8 +47,8 @@ export class EvaluationsController {
 
   @Get('evaluations/:id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findOne(@Param('id') id: string) {
-    const evaluation = await this.evaluationsService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const evaluation = await this.evaluationsService.findOne(id, currentUser.organizationId);
 
     return {
       message: 'Evaluation fetched successfully',
@@ -54,8 +58,11 @@ export class EvaluationsController {
 
   @Get('applications/:id/evaluations')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findByApplicationId(@Param('id') id: string) {
-    const evaluations = await this.evaluationsService.findByApplicationId(id);
+  async findByApplicationId(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const evaluations = await this.evaluationsService.findByApplicationId(
+      id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Application evaluations fetched successfully',
@@ -65,8 +72,8 @@ export class EvaluationsController {
 
   @Get('evaluations/:id/breakdown')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findBreakdown(@Param('id') id: string) {
-    const breakdown = await this.evaluationsService.findBreakdown(id);
+  async findBreakdown(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const breakdown = await this.evaluationsService.findBreakdown(id, currentUser.organizationId);
 
     return {
       message: 'Evaluation breakdown fetched successfully',
@@ -76,8 +83,8 @@ export class EvaluationsController {
 
   @Get('evaluations/:id/skills')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findSkills(@Param('id') id: string) {
-    const skills = await this.evaluationsService.findSkills(id);
+  async findSkills(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const skills = await this.evaluationsService.findSkills(id, currentUser.organizationId);
 
     return {
       message: 'Evaluation skills fetched successfully',
@@ -87,8 +94,11 @@ export class EvaluationsController {
 
   @Get('evaluations/:id/interview-questions')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findInterviewQuestions(@Param('id') id: string) {
-    const questions = await this.evaluationsService.findInterviewQuestions(id);
+  async findInterviewQuestions(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const questions = await this.evaluationsService.findInterviewQuestions(
+      id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Evaluation interview questions fetched successfully',
@@ -98,8 +108,8 @@ export class EvaluationsController {
 
   @Get('evaluations/:id/evidence')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findEvidence(@Param('id') id: string) {
-    const evidence = await this.evaluationsService.findEvidence(id);
+  async findEvidence(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const evidence = await this.evaluationsService.findEvidence(id, currentUser.organizationId);
 
     return {
       message: 'Evaluation evidence fetched successfully',
@@ -110,7 +120,11 @@ export class EvaluationsController {
   @Post('evaluations/:id/retry')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async retry(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
-    const evaluation = await this.evaluationsService.retry(id, currentUser.id);
+    const evaluation = await this.evaluationsService.retry(
+      id,
+      currentUser.id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Evaluation retry completed successfully',

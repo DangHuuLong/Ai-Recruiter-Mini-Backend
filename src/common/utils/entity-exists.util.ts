@@ -1,9 +1,13 @@
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AppException } from '../exceptions/app.exception';
 
-export async function ensureCandidateExists(prisma: PrismaService, id: string) {
-  const candidate = await prisma.candidate.findUnique({
-    where: { id },
+export async function ensureCandidateExists(
+  prisma: PrismaService,
+  id: string,
+  organizationId?: string,
+) {
+  const candidate = await prisma.candidate.findFirst({
+    where: { id, ...(organizationId ? { organizationId } : {}) },
     select: {
       id: true,
     },
@@ -16,11 +20,16 @@ export async function ensureCandidateExists(prisma: PrismaService, id: string) {
   return candidate;
 }
 
-export async function ensureResumeExists(prisma: PrismaService, id: string) {
-  const resume = await prisma.resume.findUnique({
-    where: { id },
+export async function ensureResumeExists(
+  prisma: PrismaService,
+  id: string,
+  organizationId?: string,
+) {
+  const resume = await prisma.resume.findFirst({
+    where: { id, ...(organizationId ? { candidate: { organizationId } } : {}) },
     select: {
       id: true,
+      candidateId: true,
     },
   });
 
@@ -31,9 +40,13 @@ export async function ensureResumeExists(prisma: PrismaService, id: string) {
   return resume;
 }
 
-export async function ensureFileAssetExists(prisma: PrismaService, id: string) {
-  const fileAsset = await prisma.fileAsset.findUnique({
-    where: { id },
+export async function ensureFileAssetExists(
+  prisma: PrismaService,
+  id: string,
+  organizationId?: string,
+) {
+  const fileAsset = await prisma.fileAsset.findFirst({
+    where: { id, ...(organizationId ? { organizationId } : {}) },
     select: {
       id: true,
       status: true,

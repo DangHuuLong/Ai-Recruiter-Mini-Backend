@@ -31,11 +31,12 @@ export class EvaluationsService {
     private readonly aiService: AiService,
   ) {}
 
-  async create(createEvaluationDto: CreateEvaluationDto, currentUserId: string) {
-    const context = await this.buildScoringContext(createEvaluationDto);
+  async create(createEvaluationDto: CreateEvaluationDto, currentUserId: string, organizationId: string) {
+    const context = await this.buildScoringContext(createEvaluationDto, organizationId);
 
     const evaluation = await this.prisma.evaluation.create({
       data: {
+        organizationId,
         applicationId: context.application.id,
         configId: context.configId,
         createdById: currentUserId,
@@ -54,12 +55,13 @@ export class EvaluationsService {
     );
   }
 
-  async findAll(query: EvaluationQueryDto) {
+  async findAll(query: EvaluationQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
     const skip = (page - 1) * limit;
 
     const where: Prisma.EvaluationWhereInput = {
+      organizationId,
       ...(query.applicationId ? { applicationId: query.applicationId } : {}),
       ...(query.configId ? { configId: query.configId } : {}),
       ...(query.createdById ? { createdById: query.createdById } : {}),
@@ -131,9 +133,9 @@ export class EvaluationsService {
     };
   }
 
-  async findOne(id: string) {
-    const evaluation = await this.prisma.evaluation.findUnique({
-      where: { id },
+  async findOne(id: string, organizationId: string) {
+    const evaluation = await this.prisma.evaluation.findFirst({
+      where: { id, organizationId },
       include: this.getEvaluationInclude(),
     });
 
@@ -144,8 +146,8 @@ export class EvaluationsService {
     return evaluation;
   }
 
-  async findByApplicationId(applicationId: string) {
-    await this.ensureApplicationExists(applicationId);
+  async findByApplicationId(applicationId: string, organizationId: string) {
+    await this.ensureApplicationExists(applicationId, organizationId);
 
     return this.prisma.evaluation.findMany({
       where: { applicationId },
@@ -154,8 +156,8 @@ export class EvaluationsService {
     });
   }
 
-  async findBreakdown(id: string) {
-    await this.ensureEvaluationExists(id);
+  async findBreakdown(id: string, organizationId: string) {
+    await this.ensureEvaluationExists(id, organizationId);
 
     return this.prisma.evaluationCriterionScore.findMany({
       where: { evaluationId: id },
@@ -163,8 +165,8 @@ export class EvaluationsService {
     });
   }
 
-  async findSkills(id: string) {
-    await this.ensureEvaluationExists(id);
+  async findSkills(id: string, organizationId: string) {
+    await this.ensureEvaluationExists(id, organizationId);
 
     return this.prisma.evaluationSkill.findMany({
       where: { evaluationId: id },
@@ -172,8 +174,8 @@ export class EvaluationsService {
     });
   }
 
-  async findInterviewQuestions(id: string) {
-    await this.ensureEvaluationExists(id);
+  async findInterviewQuestions(id: string, organizationId: string) {
+    await this.ensureEvaluationExists(id, organizationId);
 
     return this.prisma.evaluationInterviewQuestion.findMany({
       where: { evaluationId: id },
@@ -181,9 +183,9 @@ export class EvaluationsService {
     });
   }
 
-  async findEvidence(id: string) {
-    const evaluation = await this.prisma.evaluation.findUnique({
-      where: { id },
+  async findEvidence(id: string, organizationId: string) {
+    const evaluation = await this.prisma.evaluation.findFirst({
+      where: { id, organizationId },
       select: {
         id: true,
         evidenceMap: true,
@@ -210,9 +212,9 @@ export class EvaluationsService {
     return evaluation;
   }
 
-  async retry(id: string, currentUserId: string) {
-    const evaluation = await this.prisma.evaluation.findUnique({
-      where: { id },
+  async retry(id: string, currentUserId: string, organizationId: string) {
+    const evaluation = await this.prisma.evaluation.findFirst({
+      where: { id, organizationId },
       select: {
         id: true,
         applicationId: true,
@@ -229,10 +231,13 @@ export class EvaluationsService {
       throw new AppException('Evaluation is already processing', 409);
     }
 
-    const context = await this.buildScoringContext({
-      applicationId: evaluation.applicationId,
-      configId: evaluation.configId ?? undefined,
-    });
+    const context = await this.buildScoringContext(
+      {
+        applicationId: evaluation.applicationId,
+        configId: evaluation.configId ?? undefined,
+      },
+      organizationId,
+    );
 
     await this.prisma.$transaction([
       this.prisma.evaluationCriterionScore.deleteMany({ where: { evaluationId: id } }),
@@ -402,9 +407,12 @@ export class EvaluationsService {
     });
   }
 
-  private async buildScoringContext(input: Pick<CreateEvaluationDto, 'applicationId' | 'configId'>) {
-    const application = await this.prisma.application.findUnique({
-      where: { id: input.applicationId },
+  private async buildScoringContext(
+    input: Pick<CreateEvaluationDto, 'applicationId' | 'configId'>,
+    organizationId: string,
+  ) {
+    const application = await this.prisma.application.findFirst({
+      where: { id: input.applicationId, organizationId },
       include: {
         resume: true,
         jobDescription: {
@@ -439,7 +447,11 @@ export class EvaluationsService {
       throw new AppException('Job description has no skills for evaluation', 409);
     }
 
-    const config = await this.resolveEvaluationConfig(input.configId, application.jobDescriptionId);
+    const config = await this.resolveEvaluationConfig(
+      input.configId,
+      application.jobDescriptionId,
+      organizationId,
+    );
 
     return {
       application,
@@ -451,10 +463,14 @@ export class EvaluationsService {
     };
   }
 
-  private async resolveEvaluationConfig(configId: string | undefined, jobDescriptionId: string) {
+  private async resolveEvaluationConfig(
+    configId: string | undefined,
+    jobDescriptionId: string,
+    organizationId: string,
+  ) {
     if (configId) {
-      const config = await this.prisma.evaluationConfig.findUnique({
-        where: { id: configId },
+      const config = await this.prisma.evaluationConfig.findFirst({
+        where: { id: configId, organizationId },
       });
 
       if (!config) {
@@ -473,6 +489,7 @@ export class EvaluationsService {
 
     const config = await this.prisma.evaluationConfig.findFirst({
       where: {
+        organizationId,
         OR: [{ jobDescriptionId }, { jobDescriptionId: null }],
         isDefault: true,
       },
@@ -513,9 +530,9 @@ export class EvaluationsService {
     });
   }
 
-  private async ensureApplicationExists(id: string) {
-    const application = await this.prisma.application.findUnique({
-      where: { id },
+  private async ensureApplicationExists(id: string, organizationId: string) {
+    const application = await this.prisma.application.findFirst({
+      where: { id, organizationId },
       select: { id: true },
     });
 
@@ -524,9 +541,9 @@ export class EvaluationsService {
     }
   }
 
-  private async ensureEvaluationExists(id: string) {
-    const evaluation = await this.prisma.evaluation.findUnique({
-      where: { id },
+  private async ensureEvaluationExists(id: string, organizationId: string) {
+    const evaluation = await this.prisma.evaluation.findFirst({
+      where: { id, organizationId },
       select: { id: true },
     });
 

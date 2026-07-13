@@ -77,7 +77,13 @@ export function verifyJwt(token: string, secret: string): JwtPayload | null {
     const payload = JSON.parse(base64UrlDecode(encodedPayload).toString('utf8')) as JwtPayload;
     const now = Math.floor(Date.now() / 1000);
 
-    if (!payload.sub || !payload.email || !payload.role || payload.exp <= now) {
+    if (
+      !payload.sub ||
+      !payload.organizationId ||
+      !payload.email ||
+      !payload.role ||
+      payload.exp <= now
+    ) {
       return null;
     }
 

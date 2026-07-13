@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'RECRUITER', 'HIRING_MANAGER');
 
@@ -28,13 +31,32 @@ CREATE TYPE "JobSkillType" AS ENUM ('REQUIRED', 'PREFERRED');
 -- CreateEnum
 CREATE TYPE "CandidateIdentityConfidence" AS ENUM ('HIGH', 'MEDIUM', 'LOW');
 
+-- CreateEnum
+CREATE TYPE "AuthTokenType" AS ENUM ('EMAIL_VERIFICATION', 'PASSWORD_RESET');
+
+-- CreateTable
+CREATE TABLE "Organization" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "billingEmail" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Organization_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
     "email" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
     "fullName" TEXT,
     "role" "UserRole" NOT NULL DEFAULT 'RECRUITER',
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "emailVerifiedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -42,8 +64,22 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
+CREATE TABLE "AuthToken" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "type" "AuthTokenType" NOT NULL,
+    "tokenHash" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "usedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AuthToken_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "FileAsset" (
     "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
     "fileName" TEXT NOT NULL,
     "originalFileUrl" TEXT NOT NULL,
     "storageKey" TEXT NOT NULL,
@@ -63,6 +99,7 @@ CREATE TABLE "FileAsset" (
 -- CreateTable
 CREATE TABLE "Candidate" (
     "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
     "fullName" TEXT,
     "primaryEmail" TEXT,
     "primaryPhone" TEXT,
@@ -85,13 +122,7 @@ CREATE TABLE "Candidate" (
 CREATE TABLE "Resume" (
     "id" TEXT NOT NULL,
     "candidateId" TEXT NOT NULL,
-    "fileAssetId" TEXT,
-    "fileName" TEXT NOT NULL,
-    "originalFileUrl" TEXT NOT NULL,
-    "storageKey" TEXT,
-    "fileType" "ResumeFileType" NOT NULL,
-    "fileSizeBytes" INTEGER,
-    "checksum" TEXT,
+    "fileAssetId" TEXT NOT NULL,
     "rawText" TEXT,
     "parsedData" JSONB,
     "parseStatus" "ParseStatus" NOT NULL DEFAULT 'PENDING',
@@ -107,6 +138,7 @@ CREATE TABLE "Resume" (
 -- CreateTable
 CREATE TABLE "JobDescription" (
     "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
     "createdById" TEXT,
     "title" TEXT NOT NULL,
     "companyName" TEXT,
@@ -143,6 +175,7 @@ CREATE TABLE "JobSkill" (
 -- CreateTable
 CREATE TABLE "Application" (
     "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
     "candidateId" TEXT NOT NULL,
     "jobDescriptionId" TEXT NOT NULL,
     "resumeId" TEXT NOT NULL,
@@ -172,6 +205,7 @@ CREATE TABLE "ApplicationEvent" (
 -- CreateTable
 CREATE TABLE "EvaluationConfig" (
     "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
     "jobDescriptionId" TEXT,
     "createdById" TEXT,
     "name" TEXT NOT NULL,
@@ -189,6 +223,7 @@ CREATE TABLE "EvaluationConfig" (
 -- CreateTable
 CREATE TABLE "Evaluation" (
     "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
     "applicationId" TEXT NOT NULL,
     "configId" TEXT,
     "createdById" TEXT,
@@ -257,10 +292,28 @@ CREATE TABLE "EvaluationInterviewQuestion" (
 );
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Organization_slug_key" ON "Organization"("slug");
+
+-- CreateIndex
+CREATE INDEX "Organization_slug_idx" ON "Organization"("slug");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
+CREATE INDEX "User_organizationId_idx" ON "User"("organizationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AuthToken_tokenHash_key" ON "AuthToken"("tokenHash");
+
+-- CreateIndex
+CREATE INDEX "AuthToken_userId_type_idx" ON "AuthToken"("userId", "type");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "FileAsset_storageKey_key" ON "FileAsset"("storageKey");
+
+-- CreateIndex
+CREATE INDEX "FileAsset_organizationId_idx" ON "FileAsset"("organizationId");
 
 -- CreateIndex
 CREATE INDEX "FileAsset_fileType_idx" ON "FileAsset"("fileType");
@@ -275,10 +328,13 @@ CREATE INDEX "FileAsset_status_idx" ON "FileAsset"("status");
 CREATE INDEX "FileAsset_uploadedAt_idx" ON "FileAsset"("uploadedAt");
 
 -- CreateIndex
-CREATE INDEX "Candidate_primaryEmail_idx" ON "Candidate"("primaryEmail");
+CREATE INDEX "Candidate_organizationId_idx" ON "Candidate"("organizationId");
 
 -- CreateIndex
-CREATE INDEX "Candidate_primaryPhone_idx" ON "Candidate"("primaryPhone");
+CREATE INDEX "Candidate_organizationId_primaryEmail_idx" ON "Candidate"("organizationId", "primaryEmail");
+
+-- CreateIndex
+CREATE INDEX "Candidate_organizationId_primaryPhone_idx" ON "Candidate"("organizationId", "primaryPhone");
 
 -- CreateIndex
 CREATE INDEX "Candidate_fullName_idx" ON "Candidate"("fullName");
@@ -293,7 +349,7 @@ CREATE INDEX "Resume_fileAssetId_idx" ON "Resume"("fileAssetId");
 CREATE INDEX "Resume_parseStatus_idx" ON "Resume"("parseStatus");
 
 -- CreateIndex
-CREATE INDEX "Resume_checksum_idx" ON "Resume"("checksum");
+CREATE INDEX "JobDescription_organizationId_idx" ON "JobDescription"("organizationId");
 
 -- CreateIndex
 CREATE INDEX "JobDescription_createdById_idx" ON "JobDescription"("createdById");
@@ -317,6 +373,9 @@ CREATE INDEX "JobSkill_name_idx" ON "JobSkill"("name");
 CREATE INDEX "JobSkill_normalizedName_idx" ON "JobSkill"("normalizedName");
 
 -- CreateIndex
+CREATE INDEX "Application_organizationId_idx" ON "Application"("organizationId");
+
+-- CreateIndex
 CREATE INDEX "Application_candidateId_idx" ON "Application"("candidateId");
 
 -- CreateIndex
@@ -338,6 +397,9 @@ CREATE INDEX "ApplicationEvent_applicationId_idx" ON "ApplicationEvent"("applica
 CREATE INDEX "ApplicationEvent_eventType_idx" ON "ApplicationEvent"("eventType");
 
 -- CreateIndex
+CREATE INDEX "EvaluationConfig_organizationId_idx" ON "EvaluationConfig"("organizationId");
+
+-- CreateIndex
 CREATE INDEX "EvaluationConfig_jobDescriptionId_idx" ON "EvaluationConfig"("jobDescriptionId");
 
 -- CreateIndex
@@ -345,6 +407,9 @@ CREATE INDEX "EvaluationConfig_createdById_idx" ON "EvaluationConfig"("createdBy
 
 -- CreateIndex
 CREATE INDEX "EvaluationConfig_isDefault_idx" ON "EvaluationConfig"("isDefault");
+
+-- CreateIndex
+CREATE INDEX "Evaluation_organizationId_idx" ON "Evaluation"("organizationId");
 
 -- CreateIndex
 CREATE INDEX "Evaluation_applicationId_idx" ON "Evaluation"("applicationId");
@@ -380,16 +445,34 @@ CREATE INDEX "EvaluationInterviewQuestion_evaluationId_idx" ON "EvaluationInterv
 CREATE INDEX "EvaluationInterviewQuestion_linkedSkill_idx" ON "EvaluationInterviewQuestion"("linkedSkill");
 
 -- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AuthToken" ADD CONSTRAINT "AuthToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FileAsset" ADD CONSTRAINT "FileAsset_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Candidate" ADD CONSTRAINT "Candidate_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Resume" ADD CONSTRAINT "Resume_candidateId_fkey" FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Resume" ADD CONSTRAINT "Resume_fileAssetId_fkey" FOREIGN KEY ("fileAssetId") REFERENCES "FileAsset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Resume" ADD CONSTRAINT "Resume_fileAssetId_fkey" FOREIGN KEY ("fileAssetId") REFERENCES "FileAsset"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "JobDescription" ADD CONSTRAINT "JobDescription_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "JobDescription" ADD CONSTRAINT "JobDescription_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "JobSkill" ADD CONSTRAINT "JobSkill_jobDescriptionId_fkey" FOREIGN KEY ("jobDescriptionId") REFERENCES "JobDescription"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Application" ADD CONSTRAINT "Application_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Application" ADD CONSTRAINT "Application_candidateId_fkey" FOREIGN KEY ("candidateId") REFERENCES "Candidate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -407,10 +490,16 @@ ALTER TABLE "Application" ADD CONSTRAINT "Application_createdById_fkey" FOREIGN 
 ALTER TABLE "ApplicationEvent" ADD CONSTRAINT "ApplicationEvent_applicationId_fkey" FOREIGN KEY ("applicationId") REFERENCES "Application"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "EvaluationConfig" ADD CONSTRAINT "EvaluationConfig_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "EvaluationConfig" ADD CONSTRAINT "EvaluationConfig_jobDescriptionId_fkey" FOREIGN KEY ("jobDescriptionId") REFERENCES "JobDescription"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "EvaluationConfig" ADD CONSTRAINT "EvaluationConfig_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Evaluation" ADD CONSTRAINT "Evaluation_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Evaluation" ADD CONSTRAINT "Evaluation_applicationId_fkey" FOREIGN KEY ("applicationId") REFERENCES "Application"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -429,3 +518,4 @@ ALTER TABLE "EvaluationSkill" ADD CONSTRAINT "EvaluationSkill_evaluationId_fkey"
 
 -- AddForeignKey
 ALTER TABLE "EvaluationInterviewQuestion" ADD CONSTRAINT "EvaluationInterviewQuestion_evaluationId_fkey" FOREIGN KEY ("evaluationId") REFERENCES "Evaluation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

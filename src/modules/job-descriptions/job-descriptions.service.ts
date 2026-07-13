@@ -19,9 +19,14 @@ export class JobDescriptionsService {
     private readonly jobSkillsService: JobSkillsService,
   ) {}
 
-  async create(createJobDescriptionDto: CreateJobDescriptionDto, currentUserId: string) {
+  async create(
+    createJobDescriptionDto: CreateJobDescriptionDto,
+    currentUserId: string,
+    organizationId: string,
+  ) {
     return this.prisma.jobDescription.create({
       data: {
+        organizationId,
         createdById: currentUserId,
         title: createJobDescriptionDto.title,
         companyName: createJobDescriptionDto.companyName,
@@ -35,12 +40,13 @@ export class JobDescriptionsService {
     });
   }
 
-  async findAll(query: JobDescriptionQueryDto) {
+  async findAll(query: JobDescriptionQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
     const skip = (page - 1) * limit;
 
     const where: Prisma.JobDescriptionWhereInput = {
+      organizationId,
       isActive: true,
       ...(query.search
         ? {
@@ -73,9 +79,9 @@ export class JobDescriptionsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, organizationId: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
-      where: { id, isActive: true },
+      where: { id, isActive: true, organizationId },
       include: {
         skills: true,
         _count: { select: { applications: true, evaluationConfigs: true } },
@@ -89,9 +95,9 @@ export class JobDescriptionsService {
     return jobDescription;
   }
 
-  async parse(id: string) {
+  async parse(id: string, organizationId: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
-      where: { id, isActive: true },
+      where: { id, isActive: true, organizationId },
     });
 
     if (!jobDescription) {
@@ -118,7 +124,7 @@ export class JobDescriptionsService {
 
       await this.jobSkillsService.syncFromParsedData(id, parsedData);
 
-      return this.findOne(id);
+      return this.findOne(id, organizationId);
     } catch (error) {
       const parsingError = this.getParsingErrorMessage(error);
 
@@ -135,9 +141,9 @@ export class JobDescriptionsService {
     }
   }
 
-  async getParsedData(id: string) {
+  async getParsedData(id: string, organizationId: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
-      where: { id, isActive: true },
+      where: { id, isActive: true, organizationId },
       select: {
         id: true,
         title: true,
@@ -157,8 +163,12 @@ export class JobDescriptionsService {
     return jobDescription;
   }
 
-  async update(id: string, updateJobDescriptionDto: UpdateJobDescriptionDto) {
-    await this.findOne(id);
+  async update(
+    id: string,
+    updateJobDescriptionDto: UpdateJobDescriptionDto,
+    organizationId: string,
+  ) {
+    await this.findOne(id, organizationId);
 
     return this.prisma.jobDescription.update({
       where: { id },
@@ -175,8 +185,8 @@ export class JobDescriptionsService {
     });
   }
 
-  async deactivate(id: string) {
-    await this.findOne(id);
+  async deactivate(id: string, organizationId: string) {
+    await this.findOne(id, organizationId);
 
     return this.prisma.jobDescription.update({ where: { id }, data: { isActive: false } });
   }

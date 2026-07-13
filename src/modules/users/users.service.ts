@@ -11,7 +11,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto, organizationId: string) {
     const email = createUserDto.email.toLowerCase().trim();
 
     const existingUser = await this.prisma.user.findUnique({
@@ -27,6 +27,7 @@ export class UsersService {
 
     return this.prisma.user.create({
       data: {
+        organizationId,
         email,
         passwordHash,
         fullName: createUserDto.fullName,
@@ -36,12 +37,13 @@ export class UsersService {
     });
   }
 
-  async findAll(query: UserQueryDto) {
+  async findAll(query: UserQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
     const skip = (page - 1) * limit;
 
     const where: Prisma.UserWhereInput = {
+      organizationId,
       ...(query.role ? { role: query.role } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
       ...(query.search
@@ -79,11 +81,13 @@ export class UsersService {
       },
       select: {
         id: true,
+        organizationId: true,
         email: true,
         passwordHash: true,
         fullName: true,
         role: true,
         isActive: true,
+        emailVerifiedAt: true,
       },
     });
   }
@@ -91,10 +95,12 @@ export class UsersService {
   private getUserSelect(): Prisma.UserSelect {
     return {
       id: true,
+      organizationId: true,
       email: true,
       fullName: true,
       role: true,
       isActive: true,
+      emailVerifiedAt: true,
       createdAt: true,
       updatedAt: true,
     };

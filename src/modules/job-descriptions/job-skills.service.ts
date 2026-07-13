@@ -11,8 +11,8 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 export class JobSkillsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByJobDescription(jobDescriptionId: string) {
-    await this.ensureActiveJobDescription(jobDescriptionId);
+  async findByJobDescription(jobDescriptionId: string, organizationId: string) {
+    await this.ensureActiveJobDescription(jobDescriptionId, organizationId);
 
     return this.prisma.jobSkill.findMany({
       where: { jobDescriptionId },
@@ -20,8 +20,8 @@ export class JobSkillsService {
     });
   }
 
-  async create(jobDescriptionId: string, createJobSkillDto: CreateJobSkillDto) {
-    await this.ensureActiveJobDescription(jobDescriptionId);
+  async create(jobDescriptionId: string, createJobSkillDto: CreateJobSkillDto, organizationId: string) {
+    await this.ensureActiveJobDescription(jobDescriptionId, organizationId);
 
     const normalizedName = this.normalizeSkillName(
       createJobSkillDto.normalizedName ?? createJobSkillDto.name,
@@ -41,9 +41,9 @@ export class JobSkillsService {
     });
   }
 
-  async update(skillId: string, updateJobSkillDto: UpdateJobSkillDto) {
-    const existingSkill = await this.ensureJobSkillExists(skillId);
-    await this.ensureActiveJobDescription(existingSkill.jobDescriptionId);
+  async update(skillId: string, updateJobSkillDto: UpdateJobSkillDto, organizationId: string) {
+    const existingSkill = await this.ensureJobSkillExists(skillId, organizationId);
+    await this.ensureActiveJobDescription(existingSkill.jobDescriptionId, organizationId);
 
     const nextNormalizedName = this.normalizeSkillName(
       updateJobSkillDto.normalizedName ??
@@ -72,9 +72,9 @@ export class JobSkillsService {
     });
   }
 
-  async remove(skillId: string) {
-    const existingSkill = await this.ensureJobSkillExists(skillId);
-    await this.ensureActiveJobDescription(existingSkill.jobDescriptionId);
+  async remove(skillId: string, organizationId: string) {
+    const existingSkill = await this.ensureJobSkillExists(skillId, organizationId);
+    await this.ensureActiveJobDescription(existingSkill.jobDescriptionId, organizationId);
 
     await this.prisma.jobSkill.delete({ where: { id: skillId } });
 
@@ -119,12 +119,15 @@ export class JobSkillsService {
       },
     });
 
-    return this.findByJobDescription(jobDescriptionId);
+    return this.prisma.jobSkill.findMany({
+      where: { jobDescriptionId },
+      orderBy: [{ type: 'asc' }, { isCore: 'desc' }, { name: 'asc' }],
+    });
   }
 
-  private async ensureActiveJobDescription(jobDescriptionId: string) {
+  private async ensureActiveJobDescription(jobDescriptionId: string, organizationId: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
-      where: { id: jobDescriptionId, isActive: true },
+      where: { id: jobDescriptionId, isActive: true, organizationId },
       select: { id: true },
     });
 
@@ -135,8 +138,10 @@ export class JobSkillsService {
     return jobDescription;
   }
 
-  private async ensureJobSkillExists(skillId: string) {
-    const jobSkill = await this.prisma.jobSkill.findUnique({ where: { id: skillId } });
+  private async ensureJobSkillExists(skillId: string, organizationId: string) {
+    const jobSkill = await this.prisma.jobSkill.findFirst({
+      where: { id: skillId, jobDescription: { organizationId } },
+    });
 
     if (!jobSkill) {
       throw new AppException('Job skill not found', 404);
