@@ -5,9 +5,11 @@ import { CandidatesService } from './candidates.service';
 import { CandidateQueryDto } from './dto/candidate-query.dto';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import type { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller('candidates')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -16,8 +18,14 @@ export class CandidatesController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
-  async create(@Body() createCandidateDto: CreateCandidateDto) {
-    const candidate = await this.candidatesService.create(createCandidateDto);
+  async create(
+    @Body() createCandidateDto: CreateCandidateDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    const candidate = await this.candidatesService.create(
+      createCandidateDto,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Candidate created successfully',
@@ -27,8 +35,16 @@ export class CandidatesController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
-  async update(@Param('id') id: string, @Body() updateCandidateDto: UpdateCandidateDto) {
-    const candidate = await this.candidatesService.update(id, updateCandidateDto);
+  async update(
+    @Param('id') id: string,
+    @Body() updateCandidateDto: UpdateCandidateDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    const candidate = await this.candidatesService.update(
+      id,
+      updateCandidateDto,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Candidate updated successfully',
@@ -38,8 +54,8 @@ export class CandidatesController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findAll(@Query() query: CandidateQueryDto) {
-    const result = await this.candidatesService.findAll(query);
+  async findAll(@Query() query: CandidateQueryDto, @CurrentUser() currentUser: AuthUser) {
+    const result = await this.candidatesService.findAll(query, currentUser.organizationId);
 
     return {
       message: 'Candidates fetched successfully',
@@ -50,8 +66,8 @@ export class CandidatesController {
 
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findOne(@Param('id') id: string) {
-    const candidate = await this.candidatesService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const candidate = await this.candidatesService.findOne(id, currentUser.organizationId);
 
     return {
       message: 'Candidate fetched successfully',
@@ -61,8 +77,11 @@ export class CandidatesController {
 
   @Get(':id/resumes')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
-  async findResumesByCandidateId(@Param('id') id: string) {
-    const resumes = await this.candidatesService.findResumesByCandidateId(id);
+  async findResumesByCandidateId(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const resumes = await this.candidatesService.findResumesByCandidateId(
+      id,
+      currentUser.organizationId,
+    );
 
     return {
       message: 'Candidate resumes fetched successfully',
@@ -72,8 +91,8 @@ export class CandidatesController {
 
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
-  async remove(@Param('id') id: string) {
-    const result = await this.candidatesService.remove(id);
+  async remove(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    const result = await this.candidatesService.remove(id, currentUser.organizationId);
 
     return {
       message: 'Candidate deleted successfully',

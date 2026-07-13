@@ -12,10 +12,11 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 export class CandidatesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createCandidateDto: CreateCandidateDto) {
+  async create(createCandidateDto: CreateCandidateDto, organizationId: string) {
     if (createCandidateDto.primaryEmail) {
       const existingCandidate = await this.prisma.candidate.findFirst({
         where: {
+          organizationId,
           primaryEmail: createCandidateDto.primaryEmail,
         },
         select: {
@@ -30,6 +31,7 @@ export class CandidatesService {
 
     return this.prisma.candidate.create({
       data: {
+        organizationId,
         fullName: createCandidateDto.fullName,
         primaryEmail: createCandidateDto.primaryEmail,
         primaryPhone: createCandidateDto.primaryPhone,
@@ -41,12 +43,13 @@ export class CandidatesService {
     });
   }
 
-  async update(id: string, updateCandidateDto: UpdateCandidateDto) {
-    await ensureCandidateExists(this.prisma, id);
+  async update(id: string, updateCandidateDto: UpdateCandidateDto, organizationId: string) {
+    await ensureCandidateExists(this.prisma, id, organizationId);
 
     if (updateCandidateDto.primaryEmail) {
       const existingCandidate = await this.prisma.candidate.findFirst({
         where: {
+          organizationId,
           primaryEmail: updateCandidateDto.primaryEmail,
           NOT: {
             id,
@@ -76,21 +79,24 @@ export class CandidatesService {
     });
   }
 
-  async findAll(query: CandidateQueryDto) {
+  async findAll(query: CandidateQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.CandidateWhereInput = query.search
-      ? {
-          OR: [
-            { fullName: { contains: query.search, mode: 'insensitive' } },
-            { primaryEmail: { contains: query.search, mode: 'insensitive' } },
-            { primaryPhone: { contains: query.search, mode: 'insensitive' } },
-            { location: { contains: query.search, mode: 'insensitive' } },
-          ],
-        }
-      : {};
+    const where: Prisma.CandidateWhereInput = {
+      organizationId,
+      ...(query.search
+        ? {
+            OR: [
+              { fullName: { contains: query.search, mode: 'insensitive' } },
+              { primaryEmail: { contains: query.search, mode: 'insensitive' } },
+              { primaryPhone: { contains: query.search, mode: 'insensitive' } },
+              { location: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
 
     const [candidates, total] = await this.prisma.$transaction([
       this.prisma.candidate.findMany({
@@ -122,9 +128,9 @@ export class CandidatesService {
     };
   }
 
-  async findOne(id: string) {
-    const candidate = await this.prisma.candidate.findUnique({
-      where: { id },
+  async findOne(id: string, organizationId: string) {
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id, organizationId },
       include: {
         _count: {
           select: {
@@ -141,8 +147,8 @@ export class CandidatesService {
     return candidate;
   }
 
-  async findResumesByCandidateId(id: string) {
-    await ensureCandidateExists(this.prisma, id);
+  async findResumesByCandidateId(id: string, organizationId: string) {
+    await ensureCandidateExists(this.prisma, id, organizationId);
 
     return this.prisma.resume.findMany({
       where: {
@@ -170,8 +176,8 @@ export class CandidatesService {
     });
   }
 
-  async remove(id: string) {
-    await ensureCandidateExists(this.prisma, id);
+  async remove(id: string, organizationId: string) {
+    await ensureCandidateExists(this.prisma, id, organizationId);
 
     const relatedCounts = await this.prisma.candidate.findUnique({
       where: { id },
