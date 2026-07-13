@@ -45,12 +45,21 @@ export class EmailService {
       return;
     }
 
-    await transporter.sendMail({
-      from,
-      to,
-      subject: message.subject,
-      html: message.html,
-    });
+    try {
+      await transporter.sendMail({
+        from,
+        to,
+        subject: message.subject,
+        html: message.html,
+      });
+    } catch (error) {
+      // Delivery failures (bad SMTP credentials, network issues, etc.) must not
+      // fail the caller's request — e.g. organization registration already
+      // committed its Organization/User rows before sending the verification
+      // email, and the user can always retry via POST /auth/resend-verification.
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to send email to ${to} (subject: ${message.subject}): ${reason}`);
+    }
   }
 
   getFrontendUrl(): string {
