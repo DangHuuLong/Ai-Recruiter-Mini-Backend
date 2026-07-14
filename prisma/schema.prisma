@@ -82,6 +82,16 @@ enum AuthTokenType {
   PASSWORD_RESET
 }
 
+enum ScoringBatchStatus {
+  PENDING
+  PARSING
+  SCORING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+  CANCELLED
+}
+
 // ─────────────────────────────────────────────
 // ORGANIZATION (multi-tenant root)
 // ─────────────────────────────────────────────
@@ -102,6 +112,7 @@ model Organization {
   evaluations       Evaluation[]
   evaluationConfigs EvaluationConfig[]
   fileAssets        FileAsset[]
+  scoringBatches    ScoringBatch[]
 
   @@index([slug])
 }
@@ -129,6 +140,7 @@ model User {
   createdEvaluations       Evaluation[]       @relation("EvaluationCreatedBy")
   createdEvaluationConfigs EvaluationConfig[] @relation("EvaluationConfigCreatedBy")
   authTokens               AuthToken[]
+  createdScoringBatches    ScoringBatch[]     @relation("ScoringBatchCreatedBy")
 
   @@index([organizationId])
 }
@@ -169,8 +181,9 @@ model FileAsset {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  resumes      Resume[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  resumes             Resume[]
+  scoringBatchResumes ScoringBatchResume[]
 
   @@index([organizationId])
   @@index([fileType])
@@ -203,9 +216,10 @@ model Candidate {
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  resumes      Resume[]
-  applications Application[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  resumes             Resume[]
+  applications        Application[]
+  scoringBatchResumes ScoringBatchResume[]
 
   @@index([organizationId])
   @@index([organizationId, primaryEmail])
@@ -262,11 +276,12 @@ model JobDescription {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy         User?              @relation("JobDescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization      Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy         User?                        @relation("JobDescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   applications      Application[]
   skills            JobSkill[]
   evaluationConfigs EvaluationConfig[]
+  scoringBatchItems ScoringBatchJobDescription[]
 
   @@index([organizationId])
   @@index([createdById])
@@ -384,6 +399,7 @@ model EvaluationConfig {
   jobDescription JobDescription? @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
   createdBy      User?           @relation("EvaluationConfigCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   evaluations    Evaluation[]
+  scoringBatches ScoringBatch[]
 
   @@index([organizationId])
   @@index([jobDescriptionId])
@@ -507,4 +523,128 @@ model EvaluationInterviewQuestion {
 
   @@index([evaluationId])
   @@index([linkedSkill])
+}
+
+// ─────────────────────────────────────────────
+// SCORING BATCH (CV × JD matrix scoring)
+// ─────────────────────────────────────────────
+
+// One batch = "score N resumes against M job descriptions". Deliberately
+// separate from Candidate/Resume/Application/Evaluation — forcing every
+// exploratory batch item into the full CRM pipeline would pollute it with
+// data the recruiter hasn't decided to act on yet. See PLAN.md Phase 1.2
+// for full rationale. Only exists for enterprise (persisted) batches — the
+// public/anonymous tier uses an equivalent ephemeral Redis representation
+// instead (Phase 4), never a row here.
+model ScoringBatch {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  createdById        String
+  name               String?
+  status             ScoringBatchStatus @default(PENDING)
+  evaluationConfigId String?
+  totalCvCount       Int                @default(0)
+  totalJdCount       Int                @default(0)
+  totalPairCount     Int                @default(0)
+  completedPairCount Int                @default(0)
+  failedPairCount    Int                @default(0)
+  notifyWebhookUrl   String?
+  notifyEmail        String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization     Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        User                         @relation("ScoringBatchCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  evaluationConfig EvaluationConfig?            @relation(fields: [evaluationConfigId], references: [id], onDelete: SetNull)
+  resumeItems      ScoringBatchResume[]
+  jdItems          ScoringBatchJobDescription[]
+  results          ScoringBatchResult[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// One CV within a batch. candidateId is only set once this item has been
+// "promoted" into the durable Candidate/Resume pipeline (Phase 5) — until
+// then it lives entirely inside this row (rawText/parsedData).
+model ScoringBatchResume {
+  id             String      @id @default(cuid())
+  batchId        String
+  fileAssetId    String
+  checksum       String?
+  candidateLabel String?
+  status         ParseStatus @default(PENDING)
+  rawText        String?
+  parsedData     Json?
+  parsingError   String?
+  candidateId    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  batch     ScoringBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  fileAsset FileAsset            @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  candidate Candidate?           @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  results   ScoringBatchResult[]
+
+  @@unique([batchId, fileAssetId])
+  @@index([batchId])
+  @@index([status])
+  @@index([checksum])
+}
+
+// One JD within a batch. jobDescriptionId is only set once "promoted"
+// (Phase 5) — until then rawText/parsedData live entirely on this row.
+model ScoringBatchJobDescription {
+  id               String      @id @default(cuid())
+  batchId          String
+  label            String?
+  rawText          String
+  status           ParseStatus @default(PENDING)
+  parsedData       Json?
+  parsingError     String?
+  jobDescriptionId String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  batch          ScoringBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  jobDescription JobDescription?      @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
+  results        ScoringBatchResult[]
+
+  @@index([batchId])
+  @@index([status])
+}
+
+// One scored cell in the CV × JD matrix. Mirrors the shape of
+// Evaluation/EvaluationCriterionScore/EvaluationSkill/EvaluationInterviewQuestion
+// but flattened into JSON columns instead of normalized child tables, since
+// batch cells are read as a whole (never queried by individual criterion/skill)
+// and this avoids N×M×(criteria+skills+questions) row explosion.
+model ScoringBatchResult {
+  id                 String           @id @default(cuid())
+  batchId            String
+  resumeItemId       String
+  jdItemId           String
+  status             EvaluationStatus @default(PENDING)
+  overallScore       Float?
+  summary            String?
+  criteria           Json?
+  skills             Json?
+  explanation        String?
+  skillGapSummary    String?
+  interviewQuestions Json?
+  evidenceMap        Json?
+  error              String?
+  scoredAt           DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  batch      ScoringBatch               @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  resumeItem ScoringBatchResume         @relation(fields: [resumeItemId], references: [id], onDelete: Cascade)
+  jdItem     ScoringBatchJobDescription @relation(fields: [jdItemId], references: [id], onDelete: Cascade)
+
+  @@unique([resumeItemId, jdItemId])
+  @@index([batchId])
+  @@index([overallScore])
 }
