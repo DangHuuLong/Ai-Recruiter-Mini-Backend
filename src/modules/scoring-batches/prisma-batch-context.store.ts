@@ -110,6 +110,14 @@ export class PrismaBatchContextStore implements BatchContextStore {
       this.prisma.scoringBatchResult.count({ where: { batchId, status: 'FAILED' } }),
     ]);
 
+    // Persist the counts onto the batch row itself so a cheap read (e.g. a
+    // future GET /scoring-batches/:id status endpoint) doesn't need to
+    // re-run these COUNT queries just to show progress.
+    await this.prisma.scoringBatch.update({
+      where: { id: batchId },
+      data: { completedPairCount: completed, failedPairCount: failed },
+    });
+
     return { completed, total: batch.totalPairCount, failed };
   }
 
