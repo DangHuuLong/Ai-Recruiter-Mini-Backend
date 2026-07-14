@@ -1,0 +1,92 @@
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { HttpException, Logger } from '@nestjs/common';
+import { Job } from 'bullmq';
+
+import { QUEUE_NAMES } from '../queue.constants';
+import { ResumeParseJobData } from '../jobs/job-payloads.types';
+import { BatchContextStoreFactory } from '../batch-store/batch-context-store.factory';
+import { AiService } from '../../integrations/ai/ai.service';
+import { SupabaseStorageService } from '../../integrations/storage/supabase-storage.service';
+
+const RESUME_SIGNED_URL_EXPIRES_IN_SECONDS = 300;
+const RETRYABLE_STATUS_CODES = new Set([502, 504]);
+
+@Processor(QUEUE_NAMES.RESUME_PARSE, {
+  concurrency: process.env.AI_PARSE_RESUME_CONCURRENCY
+    ? Number(process.env.AI_PARSE_RESUME_CONCURRENCY)
+    : 8,
+})
+export class ResumeParseProcessor extends WorkerHost {
+  private readonly logger = new Logger(ResumeParseProcessor.name);
+
+  constructor(
+    private readonly storeFactory: BatchContextStoreFactory,
+    private readonly aiService: AiService,
+    private readonly storageService: SupabaseStorageService,
+  ) {
+    super();
+  }
+
+  async process(job: Job<ResumeParseJobData>): Promise<void> {
+    const { batchId, tier, resumeItemId, storageKey, bucket, fileName, fileType, checksum } =
+      job.data;
+    const store = this.storeFactory.forTier(tier);
+
+    try {
+      if (checksum) {
+        const cached = await store.findCachedParsedResumeByChecksum(
+          { organizationId: job.data.organizationId },
+          checksum,
+        );
+
+        if (cached) {
+          await store.updateResumeItem(batchId, resumeItemId, {
+            status: 'SUCCESS',
+            parsedData: cached,
+          });
+          return;
+        }
+      }
+
+      const signedUrl = await this.storageService.createSignedUrl(
+        storageKey,
+        RESUME_SIGNED_URL_EXPIRES_IN_SECONDS,
+        bucket,
+      );
+
+      const parseResult = await this.aiService.parseResume({
+        resume_id: resumeItemId,
+        file_name: fileName,
+        file_type: fileType,
+        signed_url: signedUrl,
+        checksum,
+      });
+
+      await store.updateResumeItem(batchId, resumeItemId, {
+        status: 'SUCCESS',
+        rawText: parseResult.raw_text,
+        parsedData: parseResult.parsed_data,
+      });
+    } catch (error) {
+      const statusCode = error instanceof HttpException ? error.getStatus() : 500;
+
+      if (RETRYABLE_STATUS_CODES.has(statusCode)) {
+        // Transient AI-service/network failure — rethrow so BullMQ retries
+        // with backoff instead of recording a permanent failure.
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : 'Resume parsing failed';
+      this.logger.warn(`Resume item ${resumeItemId} (batch ${batchId}) failed to parse: ${message}`);
+      await store.updateResumeItem(batchId, resumeItemId, { status: 'FAILED', parsingError: message });
+    } finally {
+      if (tier === 'PUBLIC') {
+        try {
+          await this.storageService.removeFile(storageKey, bucket);
+        } catch (cleanupError) {
+          this.logger.warn(`Failed to delete public temp file ${storageKey}`, cleanupError as Error);
+        }
+      }
+    }
+  }
+}

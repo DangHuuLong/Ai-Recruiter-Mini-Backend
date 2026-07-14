@@ -5,6 +5,7 @@ import { appConfig } from './config/app.config';
 import { databaseConfig } from './config/database.config';
 import { emailConfig } from './config/email.config';
 import { envValidationSchema } from './config/env.validation';
+import { queueConfig } from './config/queue.config';
 import { redisConfig } from './config/redis.config';
 import { supabaseConfig } from './config/supabase.config';
 import { PrismaModule } from './database/prisma/prisma.module';
@@ -22,12 +23,14 @@ import { HealthModule } from './modules/health/health.module';
 import { JobDescriptionsModule } from './modules/job-descriptions/job-descriptions.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
 import { UsersModule } from './modules/users/users.module';
+import { BatchStoreModule } from './queue/batch-store/batch-store.module';
+import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, supabaseConfig, redisConfig, emailConfig],
+      load: [appConfig, databaseConfig, supabaseConfig, redisConfig, emailConfig, queueConfig],
       validationSchema: envValidationSchema,
     }),
     PrismaModule,
@@ -45,6 +48,8 @@ import { UsersModule } from './modules/users/users.module';
     JobDescriptionsModule,
     ApplicationsModule,
     EvaluationsModule,
+    BatchStoreModule,
+    QueueModule,
   ],
 })
 export class AppModule {}
