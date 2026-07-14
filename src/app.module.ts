@@ -22,6 +22,7 @@ import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
 import { JobDescriptionsModule } from './modules/job-descriptions/job-descriptions.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
+import { ScoringBatchesModule } from './modules/scoring-batches/scoring-batches.module';
 import { UsersModule } from './modules/users/users.module';
 import { BatchStoreModule } from './queue/batch-store/batch-store.module';
 import { QueueModule } from './queue/queue.module';
@@ -50,6 +51,7 @@ import { QueueModule } from './queue/queue.module';
     EvaluationsModule,
     BatchStoreModule,
     QueueModule,
+    ScoringBatchesModule,
   ],
 })
 export class AppModule {}

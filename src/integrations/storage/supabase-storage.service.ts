@@ -68,6 +68,37 @@ export class SupabaseStorageService {
     return data.signedUrl;
   }
 
+  async createSignedUploadUrl(storageKey: string, bucket = this.bucket) {
+    const { data, error } = await this.client.storage
+      .from(bucket)
+      .createSignedUploadUrl(storageKey);
+
+    if (error || !data?.signedUrl) {
+      throw new AppException(
+        `Storage signed upload URL failed: ${error?.message ?? 'No signed URL returned'}`,
+        502,
+      );
+    }
+
+    return data.signedUrl;
+  }
+
+  async objectExists(storageKey: string, bucket = this.bucket): Promise<boolean> {
+    const lastSlashIndex = storageKey.lastIndexOf('/');
+    const folder = lastSlashIndex === -1 ? '' : storageKey.slice(0, lastSlashIndex);
+    const fileName = lastSlashIndex === -1 ? storageKey : storageKey.slice(lastSlashIndex + 1);
+
+    const { data, error } = await this.client.storage
+      .from(bucket)
+      .list(folder, { search: fileName, limit: 1 });
+
+    if (error) {
+      throw new AppException(`Storage list failed: ${error.message}`, 502);
+    }
+
+    return (data ?? []).some((item) => item.name === fileName);
+  }
+
   getPublicUrl(storageKey: string, bucket = this.bucket) {
     const { data } = this.client.storage.from(bucket).getPublicUrl(storageKey);
 
