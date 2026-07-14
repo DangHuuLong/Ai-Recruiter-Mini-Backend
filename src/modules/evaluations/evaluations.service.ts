@@ -3,6 +3,7 @@ import { CriterionName, EvaluationStatus, Prisma, SkillMatchType } from '@prisma
 
 import { CreateEvaluationDto } from './dto/create-evaluation.dto';
 import { EvaluationQueryDto } from './dto/evaluation-query.dto';
+import { DEFAULT_EVALUATION_CRITERIA } from '../../common/constants/default-evaluation-criteria';
 import { AppException } from '../../common/exceptions/app.exception';
 import {
   EvaluationResult,
@@ -15,14 +16,6 @@ import { AiService } from '../../integrations/ai/ai.service';
 
 const APPLICATION_EVENT_EVALUATION_COMPLETED = 'EVALUATION_COMPLETED';
 const APPLICATION_EVENT_EVALUATION_FAILED = 'EVALUATION_FAILED';
-
-const DEFAULT_CRITERIA: ScoreCriterionConfig[] = [
-  { criterion: CriterionName.SKILLS_MATCH, weight: 0.35 },
-  { criterion: CriterionName.EXPERIENCE_RELEVANCE, weight: 0.3 },
-  { criterion: CriterionName.PROJECT_RELEVANCE, weight: 0.15 },
-  { criterion: CriterionName.EDUCATION_CERTIFICATION, weight: 0.1 },
-  { criterion: CriterionName.KEYWORD_DOMAIN_ALIGNMENT, weight: 0.1 },
-];
 
 @Injectable()
 export class EvaluationsService {
@@ -456,7 +449,7 @@ export class EvaluationsService {
     return {
       application,
       configId: config?.id,
-      criteria: config?.criteria ?? DEFAULT_CRITERIA,
+      criteria: config?.criteria ?? DEFAULT_EVALUATION_CRITERIA,
       resumeData: application.resume.parsedData as unknown as ParsedResumeData,
       jobDescriptionData: application.jobDescription
         .parsedData as unknown as ParsedJobDescriptionData,

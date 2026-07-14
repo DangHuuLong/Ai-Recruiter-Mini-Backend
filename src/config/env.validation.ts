@@ -12,7 +12,10 @@ export const envValidationSchema = Joi.object({
   SUPABASE_SERVICE_ROLE_KEY: Joi.string().required(),
   SUPABASE_BUCKET: Joi.string().default('cv-files'),
 
-  REDIS_URL: Joi.string().optional(),
+  // Required as of Phase 2 (BullMQ queue infra) — previously optional since
+  // RedisService alone gracefully no-ops without it, but BullMQ needs a real
+  // connection to function at all.
+  REDIS_URL: Joi.string().required(),
 
   GEMINI_API_KEY: Joi.string().optional(),
   GEMINI_MODEL: Joi.string().default('gemini-3-flash-preview'),
@@ -34,4 +37,12 @@ export const envValidationSchema = Joi.object({
   FRONTEND_URL: Joi.string().uri().default('http://localhost:3001'),
   EMAIL_VERIFICATION_TOKEN_TTL_SECONDS: Joi.number().integer().positive().default(86400),
   PASSWORD_RESET_TOKEN_TTL_SECONDS: Joi.number().integer().positive().default(3600),
+
+  // Queue worker concurrency — the AI_SCORE_CONCURRENCY default is deliberately
+  // low since /score/application's CrossEncoder blend has no cacheable
+  // embeddings (one full forward pass per CV-JD pair) and is the real
+  // throughput bottleneck for large batches, not the backend's own concurrency.
+  AI_PARSE_RESUME_CONCURRENCY: Joi.number().integer().positive().default(8),
+  AI_PARSE_JD_CONCURRENCY: Joi.number().integer().positive().default(8),
+  AI_SCORE_CONCURRENCY: Joi.number().integer().positive().default(4),
 });
