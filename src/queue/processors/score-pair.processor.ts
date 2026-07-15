@@ -5,14 +5,10 @@ import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../queue.constants';
 import { ScorePairJobData } from '../jobs/job-payloads.types';
 import { BatchContextStoreFactory } from '../batch-store/batch-context-store.factory';
-import { EvaluationResult } from '../../common/types/ai-service.types';
+import { ScoringResultMapperService } from '../../modules/evaluations/scoring/scoring.service';
 import { AiService } from '../../integrations/ai/ai.service';
 
 const RETRYABLE_STATUS_CODES = new Set([502, 504]);
-
-function clamp01(value: number): number {
-  return Math.min(Math.max(value, 0), 1);
-}
 
 @Processor(QUEUE_NAMES.SCORE_PAIR, {
   // Deliberately low default — this is the CrossEncoder bottleneck queue on
@@ -27,6 +23,7 @@ export class ScorePairProcessor extends WorkerHost {
   constructor(
     private readonly storeFactory: BatchContextStoreFactory,
     private readonly aiService: AiService,
+    private readonly scoringMapper: ScoringResultMapperService,
   ) {
     super();
   }
@@ -34,6 +31,10 @@ export class ScorePairProcessor extends WorkerHost {
   async process(job: Job<ScorePairJobData>): Promise<void> {
     const { batchId, tier, resumeItemId, jdItemId, criteria } = job.data;
     const store = this.storeFactory.forTier(tier);
+
+    if ((await store.getBatchStatusOnly(batchId)) === 'CANCELLED') {
+      return;
+    }
 
     try {
       const [resumeData, jdData] = await Promise.all([
@@ -57,11 +58,11 @@ export class ScorePairProcessor extends WorkerHost {
         status: 'COMPLETED',
         overallScore: Math.round(result.overall_score * 100) / 100,
         summary: result.summary,
-        criteria: this.mapCriteria(result),
-        skills: this.mapSkills(result),
+        criteria: this.scoringMapper.mapCriteria(result),
+        skills: this.scoringMapper.mapSkills(result),
         explanation: result.explanation,
         skillGapSummary: result.skill_gap_summary,
-        interviewQuestions: this.mapInterviewQuestions(result),
+        interviewQuestions: this.scoringMapper.mapInterviewQuestions(result),
         evidenceMap: result.evidence_map,
       });
     } catch (error) {
@@ -77,37 +78,5 @@ export class ScorePairProcessor extends WorkerHost {
       );
       await store.upsertResult(batchId, resumeItemId, jdItemId, { status: 'FAILED', error: message });
     }
-  }
-
-  private mapCriteria(result: EvaluationResult) {
-    return result.criteria.map((item) => ({
-      criterion: item.criterion,
-      weight: clamp01(item.weight),
-      scoreNormalized: clamp01(item.score_normalized),
-      reason: item.reason,
-      evidence: item.evidence,
-    }));
-  }
-
-  private mapSkills(result: EvaluationResult) {
-    return result.skills.map((item) => ({
-      skillName: item.skill_name,
-      normalizedSkillName: item.normalized_skill_name,
-      type: item.type,
-      importance: item.importance,
-      evidence: item.evidence,
-      note: item.note,
-    }));
-  }
-
-  private mapInterviewQuestions(result: EvaluationResult) {
-    return result.interview_questions.map((item, index) => ({
-      question: item.question,
-      category: item.category,
-      linkedSkill: item.linked_skill,
-      difficulty: item.difficulty,
-      rationale: item.rationale,
-      displayOrder: item.display_order ?? index + 1,
-    }));
   }
 }

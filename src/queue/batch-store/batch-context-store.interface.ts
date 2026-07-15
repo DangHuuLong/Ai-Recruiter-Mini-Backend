@@ -71,6 +71,9 @@ export interface BatchContextStore {
 
   markBatchStatus(batchId: string, status: ScoringBatchStatus): Promise<void>;
 
+  /** Lets processors bail out early on already-cancelled batches instead of burning an AI service call. */
+  getBatchStatusOnly(batchId: string): Promise<ScoringBatchStatus>;
+
   getNotifyTarget(batchId: string): Promise<{ webhookUrl?: string | null; email?: string | null }>;
 
   /** Fetches ids/criteria needed to fan out score-pair jobs once all parsing finishes. */

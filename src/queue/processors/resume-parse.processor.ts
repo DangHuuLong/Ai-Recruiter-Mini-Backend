@@ -33,6 +33,10 @@ export class ResumeParseProcessor extends WorkerHost {
     const store = this.storeFactory.forTier(tier);
     const isFileBased = Boolean(storageKey);
 
+    if ((await store.getBatchStatusOnly(batchId)) === 'CANCELLED') {
+      return;
+    }
+
     try {
       if (isFileBased && checksum) {
         const cached = await store.findCachedParsedResumeByChecksum(

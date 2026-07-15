@@ -330,6 +330,13 @@ export class RedisBatchContextStore implements BatchContextStore {
     await this.writeMeta(client, batchId, meta);
   }
 
+  async getBatchStatusOnly(batchId: string): Promise<ScoringBatchStatus> {
+    const client = this.redisService.getClient();
+    const meta = await this.readMeta(client, batchId);
+
+    return meta.status;
+  }
+
   async getNotifyTarget(
     batchId: string,
   ): Promise<{ webhookUrl?: string | null; email?: string | null }> {
