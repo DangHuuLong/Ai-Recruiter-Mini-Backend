@@ -50,18 +50,69 @@ export interface ParsedResumeSkill {
   normalized_name: string;
   category: string | null;
   evidence: string | null;
+  level?: string | null;
+}
+
+export interface ParsedResumeEducation {
+  institution: string | null;
+  degree: string | null;
+  field_of_study: string | null;
+  start_year: number | null;
+  end_year: number | null;
+  gpa: string | null;
+  gpa_scale: string | null;
+  description: string | null;
+}
+
+export interface ParsedResumeExperience {
+  company: string | null;
+  role: string | null;
+  location: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  duration_months: number | null;
+  responsibilities: string[];
+  technologies: string[];
+}
+
+export interface ParsedResumeProject {
+  name: string | null;
+  role: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  description: string | null;
+  technologies: string[];
+  urls: string[];
+}
+
+export interface ParsedResumeCertification {
+  name: string | null;
+  issuer: string | null;
+  issued_year: number | null;
+  url: string | null;
+}
+
+export interface ParsedResumeAchievement {
+  title: string | null;
+  description: string | null;
+  year: number | null;
+}
+
+export interface ParsedResumeLanguage {
+  name: string;
+  proficiency: string | null;
 }
 
 export interface ParsedResumeData {
   personal: ParsedResumePersonalData;
   summary: string | null;
   skills: ParsedResumeSkill[];
-  education: unknown[];
-  experience: unknown[];
-  projects: unknown[];
-  certifications: unknown[];
-  achievements: unknown[];
-  languages: unknown[];
+  education: ParsedResumeEducation[];
+  experience: ParsedResumeExperience[];
+  projects: ParsedResumeProject[];
+  certifications: ParsedResumeCertification[];
+  achievements: ParsedResumeAchievement[];
+  languages: ParsedResumeLanguage[];
 }
 
 export interface ParseResumeResult {
