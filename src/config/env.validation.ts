@@ -45,4 +45,8 @@ export const envValidationSchema = Joi.object({
   AI_PARSE_RESUME_CONCURRENCY: Joi.number().integer().positive().default(8),
   AI_PARSE_JD_CONCURRENCY: Joi.number().integer().positive().default(8),
   AI_SCORE_CONCURRENCY: Joi.number().integer().positive().default(4),
+
+  // Phase 3 — batch size limits for enterprise (persisted) scoring batches.
+  ENTERPRISE_MAX_FILES_PER_BATCH: Joi.number().integer().positive().default(2000),
+  ENTERPRISE_MAX_JDS_PER_BATCH: Joi.number().integer().positive().default(50),
 });

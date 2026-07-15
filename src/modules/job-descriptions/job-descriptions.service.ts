@@ -110,7 +110,9 @@ export class JobDescriptionsService {
     });
 
     try {
-      const parsedData = await this.aiService.parseJobDescription(jobDescription.rawText);
+      const parsedData = await this.aiService.parseJobDescription({
+        raw_text: jobDescription.rawText,
+      });
 
       await this.prisma.jobDescription.update({
         where: { id },

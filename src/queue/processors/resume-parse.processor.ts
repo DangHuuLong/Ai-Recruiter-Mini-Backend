@@ -28,12 +28,13 @@ export class ResumeParseProcessor extends WorkerHost {
   }
 
   async process(job: Job<ResumeParseJobData>): Promise<void> {
-    const { batchId, tier, resumeItemId, storageKey, bucket, fileName, fileType, checksum } =
+    const { batchId, tier, resumeItemId, storageKey, bucket, fileName, fileType, checksum, rawText } =
       job.data;
     const store = this.storeFactory.forTier(tier);
+    const isFileBased = Boolean(storageKey);
 
     try {
-      if (checksum) {
+      if (isFileBased && checksum) {
         const cached = await store.findCachedParsedResumeByChecksum(
           { organizationId: job.data.organizationId },
           checksum,
@@ -48,19 +49,19 @@ export class ResumeParseProcessor extends WorkerHost {
         }
       }
 
-      const signedUrl = await this.storageService.createSignedUrl(
-        storageKey,
-        RESUME_SIGNED_URL_EXPIRES_IN_SECONDS,
-        bucket,
-      );
-
-      const parseResult = await this.aiService.parseResume({
-        resume_id: resumeItemId,
-        file_name: fileName,
-        file_type: fileType,
-        signed_url: signedUrl,
-        checksum,
-      });
+      const parseResult = isFileBased
+        ? await this.aiService.parseResume({
+            resume_id: resumeItemId,
+            file_name: fileName,
+            file_type: fileType,
+            signed_url: await this.storageService.createSignedUrl(
+              storageKey!,
+              RESUME_SIGNED_URL_EXPIRES_IN_SECONDS,
+              bucket,
+            ),
+            checksum,
+          })
+        : await this.aiService.parseResume({ resume_id: resumeItemId, raw_text: rawText });
 
       await store.updateResumeItem(batchId, resumeItemId, {
         status: 'SUCCESS',
@@ -80,9 +81,9 @@ export class ResumeParseProcessor extends WorkerHost {
       this.logger.warn(`Resume item ${resumeItemId} (batch ${batchId}) failed to parse: ${message}`);
       await store.updateResumeItem(batchId, resumeItemId, { status: 'FAILED', parsingError: message });
     } finally {
-      if (tier === 'PUBLIC') {
+      if (isFileBased && tier === 'PUBLIC') {
         try {
-          await this.storageService.removeFile(storageKey, bucket);
+          await this.storageService.removeFile(storageKey!, bucket);
         } catch (cleanupError) {
           this.logger.warn(`Failed to delete public temp file ${storageKey}`, cleanupError as Error);
         }

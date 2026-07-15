@@ -35,32 +35,34 @@ describeAiIntegration('AiService Integration', () => {
   });
 
   it('should call AI parse resume endpoint', async () => {
-    const result = await service.parseResume(
-      'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
-    );
+    const result = await service.parseResume({
+      resume_id: 'test-resume-id',
+      raw_text: 'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
+    });
 
-    expect(result.personal).toBeDefined();
-    expect(result.skills).toBeDefined();
+    expect(result.parsed_data.personal).toBeDefined();
+    expect(result.parsed_data.skills).toBeDefined();
   });
 
   it('should call AI parse job description endpoint', async () => {
-    const result = await service.parseJobDescription(
-      'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
-    );
+    const result = await service.parseJobDescription({
+      raw_text: 'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
+    });
 
     expect(result.required_skills).toBeDefined();
   });
 
   it('should call AI score application endpoint', async () => {
-    const resume = await service.parseResume(
-      'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
-    );
+    const resume = await service.parseResume({
+      resume_id: 'test-resume-id',
+      raw_text: 'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
+    });
 
-    const jobDescription = await service.parseJobDescription(
-      'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
-    );
+    const jobDescription = await service.parseJobDescription({
+      raw_text: 'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
+    });
 
-    const result = await service.scoreApplication(resume, jobDescription, [
+    const result = await service.scoreApplication(resume.parsed_data, jobDescription, [
       {
         criterion: 'SKILLS_MATCH',
         weight: 0.35,
