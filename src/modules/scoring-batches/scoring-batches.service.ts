@@ -6,6 +6,7 @@ import { Queue } from 'bullmq';
 
 import { CreateScoringBatchDto } from './dto/create-scoring-batch.dto';
 import { CreateUploadUrlsDto } from './dto/create-upload-urls.dto';
+import { mapStructuredJdToParsedData } from './job-description-structured.mapper';
 import { mapStructuredResumeToParsedData } from './resume-structured.mapper';
 import { AppException } from '../../common/exceptions/app.exception';
 import { DEFAULT_MAX_FILE_SIZE_MB } from '../../common/constants/upload.constants';
@@ -80,18 +81,22 @@ export class ScoringBatchesService {
     const resumeStructured = dto.resumeStructured ?? [];
     const jobDescriptions = dto.jobDescriptions ?? [];
     const jobDescriptionFiles = dto.jobDescriptionFiles ?? [];
+    const jobDescriptionStructured = dto.jobDescriptionStructured ?? [];
 
     if (resumeFiles.length + resumeTexts.length + resumeStructured.length === 0) {
       throw new AppException('At least one resume (file, text, or structured) is required', 400);
     }
 
-    if (jobDescriptions.length + jobDescriptionFiles.length === 0) {
-      throw new AppException('At least one job description (file or text) is required', 400);
+    const totalJdCount =
+      jobDescriptions.length + jobDescriptionFiles.length + jobDescriptionStructured.length;
+
+    if (totalJdCount === 0) {
+      throw new AppException('At least one job description (file, text, or structured) is required', 400);
     }
 
     const maxJds = this.configService.get<number>('ENTERPRISE_MAX_JDS_PER_BATCH') ?? 50;
 
-    if (jobDescriptions.length + jobDescriptionFiles.length > maxJds) {
+    if (totalJdCount > maxJds) {
       throw new AppException(`Batch exceeds the maximum of ${maxJds} job descriptions`, 400);
     }
 
@@ -157,7 +162,7 @@ export class ScoringBatchesService {
           status: 'PENDING',
           evaluationConfigId: dto.evaluationConfigId,
           totalCvCount: resumeFileAssets.length + resumeTexts.length + resumeStructured.length,
-          totalJdCount: jobDescriptions.length + jdFileAssets.length,
+          totalJdCount,
           notifyWebhookUrl: dto.notifyWebhookUrl,
           notifyEmail: dto.notifyEmail,
         },
@@ -231,6 +236,21 @@ export class ScoringBatchesService {
         ),
       );
 
+      const createdJdStructuredItems = await Promise.all(
+        jobDescriptionStructured.map((input) => {
+          const parsedData = mapStructuredJdToParsedData(input);
+
+          return tx.scoringBatchJobDescription.create({
+            data: {
+              batchId: createdBatch.id,
+              label: input.label ?? parsedData.title ?? undefined,
+              status: 'SUCCESS',
+              parsedData: parsedData as object,
+            },
+          });
+        }),
+      );
+
       await tx.scoringBatch.update({
         where: { id: createdBatch.id },
         data: { status: 'PARSING', startedAt: new Date() },
@@ -243,7 +263,11 @@ export class ScoringBatchesService {
           text: createdResumeTextItems,
           structured: createdResumeStructuredItems,
         },
-        jdItems: { text: createdJdTextItems, file: createdJdFileItems },
+        jdItems: {
+          text: createdJdTextItems,
+          file: createdJdFileItems,
+          structured: createdJdStructuredItems,
+        },
       };
     });
 
@@ -310,7 +334,7 @@ export class ScoringBatchesService {
       batchId: batch.id,
       status: 'PARSING' as const,
       totalCvCount: resumeItems.file.length + resumeItems.text.length + resumeItems.structured.length,
-      totalJdCount: jdItems.text.length + jdItems.file.length,
+      totalJdCount: jdItems.text.length + jdItems.file.length + jdItems.structured.length,
     };
   }
 }

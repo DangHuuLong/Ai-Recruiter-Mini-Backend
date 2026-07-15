@@ -11,6 +11,7 @@ import {
 
 import { JobDescriptionFileRefDto } from './job-description-file-ref.dto';
 import { JobDescriptionInputDto } from './job-description-input.dto';
+import { JobDescriptionStructuredInputDto } from './job-description-structured-input.dto';
 import { ResumeFileRefDto } from './resume-file-ref.dto';
 import { ResumeStructuredInputDto } from './resume-structured-input.dto';
 import { ResumeTextInputDto } from './resume-text-input.dto';
@@ -50,6 +51,12 @@ export class CreateScoringBatchDto {
   @Type(() => JobDescriptionFileRefDto)
   @ArrayMaxSize(50)
   jobDescriptionFiles?: JobDescriptionFileRefDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => JobDescriptionStructuredInputDto)
+  @ArrayMaxSize(50)
+  jobDescriptionStructured?: JobDescriptionStructuredInputDto[];
 
   @IsOptional()
   @IsString()
