@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { appConfig } from './config/app.config';
@@ -8,6 +8,7 @@ import { envValidationSchema } from './config/env.validation';
 import { queueConfig } from './config/queue.config';
 import { redisConfig } from './config/redis.config';
 import { supabaseConfig } from './config/supabase.config';
+import { AnonymousSessionMiddleware } from './common/middleware/anonymous-session.middleware';
 import { PrismaModule } from './database/prisma/prisma.module';
 import { AiModule } from './integrations/ai/ai.module';
 import { EmailModule } from './integrations/email/email.module';
@@ -21,6 +22,7 @@ import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
 import { JobDescriptionsModule } from './modules/job-descriptions/job-descriptions.module';
+import { PublicBatchesModule } from './modules/public-batches/public-batches.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
 import { ScoringBatchesModule } from './modules/scoring-batches/scoring-batches.module';
 import { UsersModule } from './modules/users/users.module';
@@ -52,6 +54,11 @@ import { QueueModule } from './queue/queue.module';
     BatchStoreModule,
     QueueModule,
     ScoringBatchesModule,
+    PublicBatchesModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(AnonymousSessionMiddleware).forRoutes('public/batches');
+  }
+}
