@@ -12,6 +12,7 @@ import {
 import { JobDescriptionFileRefDto } from './job-description-file-ref.dto';
 import { JobDescriptionInputDto } from './job-description-input.dto';
 import { ResumeFileRefDto } from './resume-file-ref.dto';
+import { ResumeStructuredInputDto } from './resume-structured-input.dto';
 import { ResumeTextInputDto } from './resume-text-input.dto';
 
 export class CreateScoringBatchDto {
@@ -31,6 +32,12 @@ export class CreateScoringBatchDto {
   @Type(() => ResumeTextInputDto)
   @ArrayMaxSize(2000)
   resumeTexts?: ResumeTextInputDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => ResumeStructuredInputDto)
+  @ArrayMaxSize(2000)
+  resumeStructured?: ResumeStructuredInputDto[];
 
   @IsOptional()
   @ValidateNested({ each: true })
