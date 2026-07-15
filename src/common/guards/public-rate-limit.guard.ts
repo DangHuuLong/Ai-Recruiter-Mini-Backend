@@ -7,12 +7,8 @@ import { RedisService } from '../../integrations/redis/redis.service';
 
 const RATE_LIMIT_WINDOW_SECONDS = 3600;
 
-/**
- * Limits how many batches a single anonymous caller can create per hour.
- * Keyed by IP *and* session id together — IP alone is too coarse (shared
- * NAT/office proxies), session id alone is trivially reset by clearing
- * client storage, but requiring both raises the bar without needing auth.
- */
+// Keyed by IP + session id together — IP alone is too coarse (shared NAT),
+// session id alone is trivially reset by clearing client storage.
 @Injectable()
 export class PublicRateLimitGuard implements CanActivate {
   constructor(

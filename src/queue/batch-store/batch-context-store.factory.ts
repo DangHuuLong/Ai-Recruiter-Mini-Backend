@@ -5,11 +5,6 @@ import { PrismaBatchContextStore } from '../../modules/scoring-batches/prisma-ba
 import { RedisBatchContextStore } from '../../modules/public-batches/redis-batch-context.store';
 import { BatchTier } from '../queue.constants';
 
-/**
- * Lets queue processors depend on a single abstraction regardless of tier —
- * enterprise batches resolve to the Postgres-backed store, public/anonymous
- * batches resolve to the ephemeral Redis-backed store.
- */
 @Injectable()
 export class BatchContextStoreFactory {
   constructor(

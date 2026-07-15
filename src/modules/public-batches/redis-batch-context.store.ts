@@ -78,16 +78,10 @@ export interface PublicBatchSnapshot {
   results: PublicResultRecord[];
 }
 
-/**
- * Ephemeral (Redis-backed) implementation of BatchContextStore for the
- * public/anonymous tier. Every key for a batch shares one TTL, refreshed on
- * every write, so an abandoned batch simply expires — there is no cleanup
- * job to run. Meta is a single JSON blob per batch (not a hash) since it's
- * always read/written as a whole; resumes/jds/results are hashes keyed by
- * item id so counts can be recomputed with HGETALL instead of a Postgres
- * COUNT() query, mirroring PrismaBatchContextStore's "recompute, don't
- * increment" approach to avoid double-counting on BullMQ retries.
- */
+// Ephemeral, Redis-backed BatchContextStore for the public tier. All keys
+// for a batch share one TTL, refreshed on every write — an abandoned batch
+// just expires, no cleanup job needed. Counts recompute via HGETALL rather
+// than an atomic counter, avoiding double-count on BullMQ retries.
 @Injectable()
 export class RedisBatchContextStore implements BatchContextStore {
   constructor(
@@ -183,9 +177,7 @@ export class RedisBatchContextStore implements BatchContextStore {
 
     await client.hset(this.resumesKey(batchId), resumeItemId, JSON.stringify(updated));
 
-    // Session-scoped checksum cache — only file-based items carry a checksum.
-    // Written here (not at item-creation time) since we only want to cache
-    // an *actually parsed* result, not a pending placeholder.
+    // Cache only actually-parsed results, not pending placeholders.
     if (patch.status === 'SUCCESS' && current.checksum && patch.parsedData) {
       const metaRaw = await client.get(this.metaKey(batchId));
 
@@ -363,8 +355,7 @@ export class RedisBatchContextStore implements BatchContextStore {
   }
 
   async getBatchCriteria(_batchId: string): Promise<ScoreCriterionConfig[]> {
-    // Public/anonymous batches have no persisted EvaluationConfig to select —
-    // always score with the platform default criteria set.
+    // No persisted EvaluationConfig for public batches.
     return DEFAULT_EVALUATION_CRITERIA;
   }
 

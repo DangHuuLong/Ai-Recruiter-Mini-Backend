@@ -109,8 +109,7 @@ export class PublicBatchesService {
 
     const bucket = this.getPublicBucket();
 
-    // Public batches never touch Postgres — no FileAsset row is created, we
-    // only verify the uploaded object actually exists before enqueueing it.
+    // No FileAsset row — public batches never touch Postgres.
     const [resumeFileTypes, jdFileTypes] = await Promise.all([
       Promise.all(resumeFiles.map((ref) => this.verifyFileRef(ref, bucket))),
       Promise.all(jobDescriptionFiles.map((ref) => this.verifyFileRef(ref, bucket))),

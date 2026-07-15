@@ -8,12 +8,8 @@ export interface RequestWithAnonSession extends Request {
   anonSessionId: string;
 }
 
-/**
- * Applied to /public/* routes only. Public batches have no user account to
- * key data by, so every anonymous caller is identified by this session id
- * instead — echoed back on the response so the client can persist and reuse
- * it (e.g. to poll GET /public/batches/:id, or to hit the checksum cache).
- */
+// Identifies anonymous callers in place of a user account; echoed back so
+// the client can reuse it for polling and checksum caching.
 @Injectable()
 export class AnonymousSessionMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {

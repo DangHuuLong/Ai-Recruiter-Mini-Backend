@@ -15,8 +15,7 @@ import { ResumeFileRefDto } from '../../scoring-batches/dto/resume-file-ref.dto'
 import { ResumeStructuredInputDto } from '../../scoring-batches/dto/resume-structured-input.dto';
 import { ResumeTextInputDto } from '../../scoring-batches/dto/resume-text-input.dto';
 
-// No evaluationConfigId — public/anonymous batches have no persisted
-// EvaluationConfig to select, they always score with DEFAULT_EVALUATION_CRITERIA.
+// No evaluationConfigId — public batches always use DEFAULT_EVALUATION_CRITERIA.
 export class CreatePublicBatchDto {
   @IsOptional()
   @IsString()
