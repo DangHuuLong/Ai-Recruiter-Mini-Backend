@@ -104,6 +104,10 @@ export class JobDescriptionsService {
       throw new AppException('Job description not found', 404);
     }
 
+    if (!jobDescription.rawText) {
+      throw new AppException('Job description has no raw text to parse', 409);
+    }
+
     await this.prisma.jobDescription.update({
       where: { id },
       data: { parseStatus: ParseStatus.PROCESSING, parsingError: null },

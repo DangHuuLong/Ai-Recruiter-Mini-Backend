@@ -231,7 +231,9 @@ model Candidate {
 model Resume {
   id          String @id @default(cuid())
   candidateId String
-  fileAssetId String
+  // Nullable — a resume promoted from a text/structured ScoringBatchResume
+  // (Phase 5) has no backing file at all.
+  fileAssetId String?
 
   rawText       String?
   parsedData    Json?
@@ -244,7 +246,7 @@ model Resume {
   updatedAt  DateTime @updatedAt
 
   candidate    Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  fileAsset    FileAsset     @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  fileAsset    FileAsset?    @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
   applications Application[]
 
   @@index([candidateId])
@@ -266,7 +268,9 @@ model JobDescription {
   location       String?
   employmentType String?
   seniority      String?
-  rawText        String
+  // Nullable — a JD promoted from a file/structured ScoringBatchJobDescription
+  // (Phase 5) has no pasted raw text at all.
+  rawText        String?
   // Structured JSON extracted from JD.
   // Shape: { responsibilities[], requirements[], niceToHave[], minExperienceYears, educationRequirement, domainKeywords[] }
   parsedData     Json?
