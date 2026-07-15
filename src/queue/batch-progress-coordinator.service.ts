@@ -6,6 +6,9 @@ import { Queue, QueueEvents } from 'bullmq';
 import { BatchTier, QUEUE_NAMES } from './queue.constants';
 import { BatchContextStoreFactory } from './batch-store/batch-context-store.factory';
 import { JdParseJobData, NotifyJobData, ResumeParseJobData, ScorePairJobData } from './jobs/job-payloads.types';
+import { RedisService } from '../integrations/redis/redis.service';
+
+const TRANSITION_LOCK_TTL_SECONDS = 3600;
 
 /**
  * Listens for job completion across the parse/score queues and drives batch
@@ -14,6 +17,12 @@ import { JdParseJobData, NotifyJobData, ResumeParseJobData, ScorePairJobData } f
  * inside a processor's own try/catch — that would double-count on BullMQ
  * retries. Safe to react redundantly since progress counts are recomputed
  * from the store's source of truth on every event, not incremented.
+ *
+ * The stage-transition side effects (enqueueing score-pair jobs, enqueueing
+ * the notify job) are NOT idempotent, though — if the last 2 items of a
+ * stage settle within milliseconds of each other, both event handlers can
+ * see completed === total and both fire. Guarded with a Redis NX lock per
+ * batch per transition so only the first handler to arrive proceeds.
  */
 @Injectable()
 export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDestroy {
@@ -25,6 +34,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
   constructor(
     private readonly configService: ConfigService,
     private readonly storeFactory: BatchContextStoreFactory,
+    private readonly redisService: RedisService,
     @InjectQueue(QUEUE_NAMES.RESUME_PARSE) private readonly resumeParseQueue: Queue<ResumeParseJobData>,
     @InjectQueue(QUEUE_NAMES.JD_PARSE) private readonly jdParseQueue: Queue<JdParseJobData>,
     @InjectQueue(QUEUE_NAMES.SCORE_PAIR) private readonly scorePairQueue: Queue<ScorePairJobData>,
@@ -94,6 +104,9 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     const { completed, total } = await store.incrementParseCompleted(batchId);
     if (completed < total) return;
 
+    const acquired = await this.acquireTransitionLock(batchId, 'scoring-stage');
+    if (!acquired) return;
+
     await this.startScoringStage(store, batchId, tier);
   }
 
@@ -154,9 +167,26 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     const { completed, total, failed } = await store.incrementScoreCompleted(batchId);
     if (completed < total) return;
 
+    const acquired = await this.acquireTransitionLock(batchId, 'completion');
+    if (!acquired) return;
+
     const finalStatus = failed > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED';
     await store.markBatchStatus(batchId, finalStatus);
     await this.enqueueNotifyIfConfigured(store, batchId, tier, finalStatus);
+  }
+
+  /** Ensures only the first of several concurrently-arriving events proceeds past a given stage transition. */
+  private async acquireTransitionLock(batchId: string, stage: string): Promise<boolean> {
+    const client = this.redisService.getClient();
+    const result = await client.set(
+      `batch-lock:${batchId}:${stage}`,
+      '1',
+      'EX',
+      TRANSITION_LOCK_TTL_SECONDS,
+      'NX',
+    );
+
+    return result === 'OK';
   }
 
   private async enqueueNotifyIfConfigured(

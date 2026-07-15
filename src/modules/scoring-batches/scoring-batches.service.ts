@@ -6,10 +6,10 @@ import { Queue } from 'bullmq';
 
 import { CreateScoringBatchDto } from './dto/create-scoring-batch.dto';
 import { CreateUploadUrlsDto } from './dto/create-upload-urls.dto';
-import { ResumeStructuredInputDto } from './dto/resume-structured-input.dto';
+import { mapStructuredJdToParsedData } from './job-description-structured.mapper';
+import { mapStructuredResumeToParsedData } from './resume-structured.mapper';
 import { AppException } from '../../common/exceptions/app.exception';
 import { DEFAULT_MAX_FILE_SIZE_MB } from '../../common/constants/upload.constants';
-import { ParsedResumeData } from '../../common/types/ai-service.types';
 import {
   getUploadFileExtension,
   isAllowedUploadMimeType,
@@ -81,18 +81,22 @@ export class ScoringBatchesService {
     const resumeStructured = dto.resumeStructured ?? [];
     const jobDescriptions = dto.jobDescriptions ?? [];
     const jobDescriptionFiles = dto.jobDescriptionFiles ?? [];
+    const jobDescriptionStructured = dto.jobDescriptionStructured ?? [];
 
     if (resumeFiles.length + resumeTexts.length + resumeStructured.length === 0) {
       throw new AppException('At least one resume (file, text, or structured) is required', 400);
     }
 
-    if (jobDescriptions.length + jobDescriptionFiles.length === 0) {
-      throw new AppException('At least one job description (file or text) is required', 400);
+    const totalJdCount =
+      jobDescriptions.length + jobDescriptionFiles.length + jobDescriptionStructured.length;
+
+    if (totalJdCount === 0) {
+      throw new AppException('At least one job description (file, text, or structured) is required', 400);
     }
 
     const maxJds = this.configService.get<number>('ENTERPRISE_MAX_JDS_PER_BATCH') ?? 50;
 
-    if (jobDescriptions.length + jobDescriptionFiles.length > maxJds) {
+    if (totalJdCount > maxJds) {
       throw new AppException(`Batch exceeds the maximum of ${maxJds} job descriptions`, 400);
     }
 
@@ -158,7 +162,7 @@ export class ScoringBatchesService {
           status: 'PENDING',
           evaluationConfigId: dto.evaluationConfigId,
           totalCvCount: resumeFileAssets.length + resumeTexts.length + resumeStructured.length,
-          totalJdCount: jobDescriptions.length + jdFileAssets.length,
+          totalJdCount,
           notifyWebhookUrl: dto.notifyWebhookUrl,
           notifyEmail: dto.notifyEmail,
         },
@@ -193,7 +197,7 @@ export class ScoringBatchesService {
 
       const createdResumeStructuredItems = await Promise.all(
         resumeStructured.map((input) => {
-          const parsedData = this.mapStructuredResumeToParsedData(input);
+          const parsedData = mapStructuredResumeToParsedData(input);
 
           return tx.scoringBatchResume.create({
             data: {
@@ -232,6 +236,21 @@ export class ScoringBatchesService {
         ),
       );
 
+      const createdJdStructuredItems = await Promise.all(
+        jobDescriptionStructured.map((input) => {
+          const parsedData = mapStructuredJdToParsedData(input);
+
+          return tx.scoringBatchJobDescription.create({
+            data: {
+              batchId: createdBatch.id,
+              label: input.label ?? parsedData.title ?? undefined,
+              status: 'SUCCESS',
+              parsedData: parsedData as object,
+            },
+          });
+        }),
+      );
+
       await tx.scoringBatch.update({
         where: { id: createdBatch.id },
         data: { status: 'PARSING', startedAt: new Date() },
@@ -244,7 +263,11 @@ export class ScoringBatchesService {
           text: createdResumeTextItems,
           structured: createdResumeStructuredItems,
         },
-        jdItems: { text: createdJdTextItems, file: createdJdFileItems },
+        jdItems: {
+          text: createdJdTextItems,
+          file: createdJdFileItems,
+          structured: createdJdStructuredItems,
+        },
       };
     });
 
@@ -311,73 +334,7 @@ export class ScoringBatchesService {
       batchId: batch.id,
       status: 'PARSING' as const,
       totalCvCount: resumeItems.file.length + resumeItems.text.length + resumeItems.structured.length,
-      totalJdCount: jdItems.text.length + jdItems.file.length,
-    };
-  }
-
-  private mapStructuredResumeToParsedData(input: ResumeStructuredInputDto): ParsedResumeData {
-    return {
-      personal: {
-        full_name: input.personal?.fullName ?? null,
-        email: input.personal?.email ?? null,
-        phone: input.personal?.phone ?? null,
-        location: input.personal?.location ?? null,
-        linkedin_url: input.personal?.linkedinUrl ?? null,
-        github_url: input.personal?.githubUrl ?? null,
-        portfolio_url: input.personal?.portfolioUrl ?? null,
-      },
-      summary: input.summary ?? null,
-      skills: (input.skills ?? []).map((skill) => ({
-        name: skill.name,
-        normalized_name: skill.name.trim().toLowerCase(),
-        category: skill.category ?? null,
-        evidence: skill.evidence ?? null,
-        level: skill.level ?? null,
-      })),
-      education: (input.education ?? []).map((education) => ({
-        institution: education.institution ?? null,
-        degree: education.degree ?? null,
-        field_of_study: education.fieldOfStudy ?? null,
-        start_year: education.startYear ?? null,
-        end_year: education.endYear ?? null,
-        gpa: education.gpa ?? null,
-        gpa_scale: education.gpaScale ?? null,
-        description: education.description ?? null,
-      })),
-      experience: (input.experience ?? []).map((experience) => ({
-        company: experience.company ?? null,
-        role: experience.role ?? null,
-        location: experience.location ?? null,
-        start_date: experience.startDate ?? null,
-        end_date: experience.endDate ?? null,
-        duration_months: experience.durationMonths ?? null,
-        responsibilities: experience.responsibilities ?? [],
-        technologies: experience.technologies ?? [],
-      })),
-      projects: (input.projects ?? []).map((project) => ({
-        name: project.name ?? null,
-        role: project.role ?? null,
-        start_date: project.startDate ?? null,
-        end_date: project.endDate ?? null,
-        description: project.description ?? null,
-        technologies: project.technologies ?? [],
-        urls: project.urls ?? [],
-      })),
-      certifications: (input.certifications ?? []).map((certification) => ({
-        name: certification.name ?? null,
-        issuer: certification.issuer ?? null,
-        issued_year: certification.issuedYear ?? null,
-        url: certification.url ?? null,
-      })),
-      achievements: (input.achievements ?? []).map((achievement) => ({
-        title: achievement.title ?? null,
-        description: achievement.description ?? null,
-        year: achievement.year ?? null,
-      })),
-      languages: (input.languages ?? []).map((language) => ({
-        name: language.name,
-        proficiency: language.proficiency ?? null,
-      })),
+      totalJdCount: jdItems.text.length + jdItems.file.length + jdItems.structured.length,
     };
   }
 }

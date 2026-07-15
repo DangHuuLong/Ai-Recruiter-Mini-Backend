@@ -16,6 +16,7 @@ export interface ResumeParseJobData {
   fileType?: string;
   checksum?: string | null;
   organizationId?: string; // used for checksum-cache scoping (ENTERPRISE only)
+  sessionId?: string; // used for checksum-cache scoping (PUBLIC only)
   rawText?: string;
 }
 

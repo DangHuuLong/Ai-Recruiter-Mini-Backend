@@ -9,14 +9,15 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { JobDescriptionFileRefDto } from './job-description-file-ref.dto';
-import { JobDescriptionInputDto } from './job-description-input.dto';
-import { JobDescriptionStructuredInputDto } from './job-description-structured-input.dto';
-import { ResumeFileRefDto } from './resume-file-ref.dto';
-import { ResumeStructuredInputDto } from './resume-structured-input.dto';
-import { ResumeTextInputDto } from './resume-text-input.dto';
+import { JobDescriptionFileRefDto } from '../../scoring-batches/dto/job-description-file-ref.dto';
+import { JobDescriptionInputDto } from '../../scoring-batches/dto/job-description-input.dto';
+import { JobDescriptionStructuredInputDto } from '../../scoring-batches/dto/job-description-structured-input.dto';
+import { ResumeFileRefDto } from '../../scoring-batches/dto/resume-file-ref.dto';
+import { ResumeStructuredInputDto } from '../../scoring-batches/dto/resume-structured-input.dto';
+import { ResumeTextInputDto } from '../../scoring-batches/dto/resume-text-input.dto';
 
-export class CreateScoringBatchDto {
+// No evaluationConfigId — public batches always use DEFAULT_EVALUATION_CRITERIA.
+export class CreatePublicBatchDto {
   @IsOptional()
   @IsString()
   @MaxLength(150)
@@ -25,19 +26,19 @@ export class CreateScoringBatchDto {
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => ResumeFileRefDto)
-  @ArrayMaxSize(2000)
+  @ArrayMaxSize(50)
   resumeFiles?: ResumeFileRefDto[];
 
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => ResumeTextInputDto)
-  @ArrayMaxSize(2000)
+  @ArrayMaxSize(50)
   resumeTexts?: ResumeTextInputDto[];
 
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => ResumeStructuredInputDto)
-  @ArrayMaxSize(2000)
+  @ArrayMaxSize(50)
   resumeStructured?: ResumeStructuredInputDto[];
 
   @IsOptional()
@@ -57,10 +58,6 @@ export class CreateScoringBatchDto {
   @Type(() => JobDescriptionStructuredInputDto)
   @ArrayMaxSize(50)
   jobDescriptionStructured?: JobDescriptionStructuredInputDto[];
-
-  @IsOptional()
-  @IsString()
-  evaluationConfigId?: string;
 
   @IsOptional()
   @IsUrl()
