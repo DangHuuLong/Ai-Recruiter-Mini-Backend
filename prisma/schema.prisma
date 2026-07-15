@@ -181,9 +181,10 @@ model FileAsset {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  resumes             Resume[]
-  scoringBatchResumes ScoringBatchResume[]
+  organization                Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  resumes                     Resume[]
+  scoringBatchResumes         ScoringBatchResume[]
+  scoringBatchJobDescriptions ScoringBatchJobDescription[]
 
   @@index([organizationId])
   @@index([fileType])
@@ -569,10 +570,12 @@ model ScoringBatch {
 // One CV within a batch. candidateId is only set once this item has been
 // "promoted" into the durable Candidate/Resume pipeline (Phase 5) — until
 // then it lives entirely inside this row (rawText/parsedData).
+// fileAssetId is nullable — a CV submitted as pasted/typed text (AI service
+// /parse/resume raw_text path) has no backing file at all.
 model ScoringBatchResume {
   id             String      @id @default(cuid())
   batchId        String
-  fileAssetId    String
+  fileAssetId    String?
   checksum       String?
   candidateLabel String?
   status         ParseStatus @default(PENDING)
@@ -584,7 +587,7 @@ model ScoringBatchResume {
   updatedAt      DateTime    @updatedAt
 
   batch     ScoringBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  fileAsset FileAsset            @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  fileAsset FileAsset?           @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
   candidate Candidate?           @relation(fields: [candidateId], references: [id], onDelete: SetNull)
   results   ScoringBatchResult[]
 
@@ -596,11 +599,15 @@ model ScoringBatchResume {
 
 // One JD within a batch. jobDescriptionId is only set once "promoted"
 // (Phase 5) — until then rawText/parsedData live entirely on this row.
+// Exactly one of fileAssetId or rawText is expected to be set at creation
+// time: a file-based JD (AI service /parse/job-description signed_url path)
+// has no rawText until parsing completes; a text-pasted JD has no file.
 model ScoringBatchJobDescription {
   id               String      @id @default(cuid())
   batchId          String
   label            String?
-  rawText          String
+  fileAssetId      String?
+  rawText          String?
   status           ParseStatus @default(PENDING)
   parsedData       Json?
   parsingError     String?
@@ -609,6 +616,7 @@ model ScoringBatchJobDescription {
   updatedAt        DateTime    @updatedAt
 
   batch          ScoringBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  fileAsset      FileAsset?           @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
   jobDescription JobDescription?      @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
   results        ScoringBatchResult[]
 
