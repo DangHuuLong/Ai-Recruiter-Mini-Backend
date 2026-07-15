@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -20,7 +21,7 @@ export class JobDescriptionStructuredSkillDto {
   isCore?: boolean;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   weightHint?: number;
 }
 
