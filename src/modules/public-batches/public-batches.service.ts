@@ -20,6 +20,7 @@ import { QUEUE_NAMES } from '../../queue/queue.constants';
 import { CreateUploadUrlsDto } from '../scoring-batches/dto/create-upload-urls.dto';
 import { JobDescriptionFileRefDto } from '../scoring-batches/dto/job-description-file-ref.dto';
 import { ResumeFileRefDto } from '../scoring-batches/dto/resume-file-ref.dto';
+import { mapStructuredJdToParsedData } from '../scoring-batches/job-description-structured.mapper';
 import { mapStructuredResumeToParsedData } from '../scoring-batches/resume-structured.mapper';
 
 const SIGNED_UPLOAD_URL_EXPIRES_IN_SECONDS = 600;
@@ -82,16 +83,21 @@ export class PublicBatchesService {
     const resumeStructured = dto.resumeStructured ?? [];
     const jobDescriptions = dto.jobDescriptions ?? [];
     const jobDescriptionFiles = dto.jobDescriptionFiles ?? [];
+    const jobDescriptionStructured = dto.jobDescriptionStructured ?? [];
 
     const totalCvCount = resumeFiles.length + resumeTexts.length + resumeStructured.length;
-    const totalJdCount = jobDescriptions.length + jobDescriptionFiles.length;
+    const totalJdCount =
+      jobDescriptions.length + jobDescriptionFiles.length + jobDescriptionStructured.length;
 
     if (totalCvCount === 0) {
       throw new AppException('At least one resume (file, text, or structured) is required', 400);
     }
 
     if (totalJdCount === 0) {
-      throw new AppException('At least one job description (file or text) is required', 400);
+      throw new AppException(
+        'At least one job description (file, text, or structured) is required',
+        400,
+      );
     }
 
     const maxFiles = this.configService.get<number>('PUBLIC_MAX_FILES_PER_BATCH') ?? 2;
@@ -188,6 +194,19 @@ export class PublicBatchesService {
           label: ref.label ?? ref.fileName,
         });
         return { id, ref, fileType: jdFileTypes[index] };
+      }),
+    );
+
+    await Promise.all(
+      jobDescriptionStructured.map(async (input) => {
+        const parsedData = mapStructuredJdToParsedData(input);
+        const id = randomUUID();
+        await this.redisStore.addJdItem(batchId, {
+          id,
+          status: 'SUCCESS',
+          label: input.label ?? parsedData.title ?? null,
+          parsedData,
+        });
       }),
     );
 
