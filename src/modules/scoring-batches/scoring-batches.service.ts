@@ -74,9 +74,22 @@ export class ScoringBatchesService {
   }
 
   async create(dto: CreateScoringBatchDto, organizationId: string, userId: string) {
+    const resumeFiles = dto.resumeFiles ?? [];
+    const resumeTexts = dto.resumeTexts ?? [];
+    const jobDescriptions = dto.jobDescriptions ?? [];
+    const jobDescriptionFiles = dto.jobDescriptionFiles ?? [];
+
+    if (resumeFiles.length + resumeTexts.length === 0) {
+      throw new AppException('At least one resume (file or text) is required', 400);
+    }
+
+    if (jobDescriptions.length + jobDescriptionFiles.length === 0) {
+      throw new AppException('At least one job description (file or text) is required', 400);
+    }
+
     const maxJds = this.configService.get<number>('ENTERPRISE_MAX_JDS_PER_BATCH') ?? 50;
 
-    if (dto.jobDescriptions.length > maxJds) {
+    if (jobDescriptions.length + jobDescriptionFiles.length > maxJds) {
       throw new AppException(`Batch exceeds the maximum of ${maxJds} job descriptions`, 400);
     }
 
@@ -93,36 +106,45 @@ export class ScoringBatchesService {
 
     const bucket = this.storageService.getDefaultBucket();
 
-    const fileAssets = await Promise.all(
-      dto.resumeFiles.map(async (ref) => {
-        const exists = await this.storageService.objectExists(ref.fileKey, bucket);
+    const createFileAsset = async (ref: {
+      fileKey: string;
+      fileName: string;
+      mimeType: string;
+      sizeBytes: number;
+      checksum?: string;
+    }) => {
+      const exists = await this.storageService.objectExists(ref.fileKey, bucket);
 
-        if (!exists) {
-          throw new AppException(`Uploaded file not found: ${ref.fileKey}`, 400);
-        }
+      if (!exists) {
+        throw new AppException(`Uploaded file not found: ${ref.fileKey}`, 400);
+      }
 
-        let fileType;
-        try {
-          fileType = resolveResumeFileType(ref.mimeType);
-        } catch {
-          throw new AppException(`Unsupported file type: ${ref.mimeType}`, 400);
-        }
+      let fileType;
+      try {
+        fileType = resolveResumeFileType(ref.mimeType);
+      } catch {
+        throw new AppException(`Unsupported file type: ${ref.mimeType}`, 400);
+      }
 
-        return this.prisma.fileAsset.create({
-          data: {
-            organizationId,
-            fileName: ref.fileName,
-            originalFileUrl: this.storageService.getPublicUrl(ref.fileKey, bucket),
-            storageKey: ref.fileKey,
-            fileType,
-            fileSizeBytes: ref.sizeBytes,
-            checksum: ref.checksum,
-            bucket,
-            status: 'ACTIVE',
-          },
-        });
-      }),
-    );
+      return this.prisma.fileAsset.create({
+        data: {
+          organizationId,
+          fileName: ref.fileName,
+          originalFileUrl: this.storageService.getPublicUrl(ref.fileKey, bucket),
+          storageKey: ref.fileKey,
+          fileType,
+          fileSizeBytes: ref.sizeBytes,
+          checksum: ref.checksum,
+          bucket,
+          status: 'ACTIVE',
+        },
+      });
+    };
+
+    const [resumeFileAssets, jdFileAssets] = await Promise.all([
+      Promise.all(resumeFiles.map(createFileAsset)),
+      Promise.all(jobDescriptionFiles.map(createFileAsset)),
+    ]);
 
     const { batch, resumeItems, jdItems } = await this.prisma.$transaction(async (tx) => {
       const createdBatch = await tx.scoringBatch.create({
@@ -132,15 +154,15 @@ export class ScoringBatchesService {
           name: dto.name,
           status: 'PENDING',
           evaluationConfigId: dto.evaluationConfigId,
-          totalCvCount: fileAssets.length,
-          totalJdCount: dto.jobDescriptions.length,
+          totalCvCount: resumeFileAssets.length + resumeTexts.length,
+          totalJdCount: jobDescriptions.length + jdFileAssets.length,
           notifyWebhookUrl: dto.notifyWebhookUrl,
           notifyEmail: dto.notifyEmail,
         },
       });
 
-      const createdResumeItems = await Promise.all(
-        fileAssets.map((fa) =>
+      const createdResumeFileItems = await Promise.all(
+        resumeFileAssets.map((fa) =>
           tx.scoringBatchResume.create({
             data: {
               batchId: createdBatch.id,
@@ -153,8 +175,21 @@ export class ScoringBatchesService {
         ),
       );
 
-      const createdJdItems = await Promise.all(
-        dto.jobDescriptions.map((jd) =>
+      const createdResumeTextItems = await Promise.all(
+        resumeTexts.map((input) =>
+          tx.scoringBatchResume.create({
+            data: {
+              batchId: createdBatch.id,
+              rawText: input.rawText,
+              candidateLabel: input.label,
+              status: 'PENDING',
+            },
+          }),
+        ),
+      );
+
+      const createdJdTextItems = await Promise.all(
+        jobDescriptions.map((jd) =>
           tx.scoringBatchJobDescription.create({
             data: {
               batchId: createdBatch.id,
@@ -166,17 +201,34 @@ export class ScoringBatchesService {
         ),
       );
 
+      const createdJdFileItems = await Promise.all(
+        jdFileAssets.map((fa, index) =>
+          tx.scoringBatchJobDescription.create({
+            data: {
+              batchId: createdBatch.id,
+              fileAssetId: fa.id,
+              label: jobDescriptionFiles[index].label ?? fa.fileName,
+              status: 'PENDING',
+            },
+          }),
+        ),
+      );
+
       await tx.scoringBatch.update({
         where: { id: createdBatch.id },
         data: { status: 'PARSING', startedAt: new Date() },
       });
 
-      return { batch: createdBatch, resumeItems: createdResumeItems, jdItems: createdJdItems };
+      return {
+        batch: createdBatch,
+        resumeItems: { file: createdResumeFileItems, text: createdResumeTextItems },
+        jdItems: { text: createdJdTextItems, file: createdJdFileItems },
+      };
     });
 
     await Promise.all([
-      ...resumeItems.map((item, index) => {
-        const fa = fileAssets[index];
+      ...resumeItems.file.map((item, index) => {
+        const fa = resumeFileAssets[index];
 
         return this.resumeParseQueue.add(
           'resume-parse',
@@ -194,20 +246,50 @@ export class ScoringBatchesService {
           JOB_RETRY_OPTIONS,
         );
       }),
-      ...jdItems.map((item) =>
-        this.jdParseQueue.add(
-          'jd-parse',
-          { batchId: batch.id, tier: 'ENTERPRISE', jdItemId: item.id, rawText: item.rawText },
+      ...resumeItems.text.map((item) =>
+        this.resumeParseQueue.add(
+          'resume-parse',
+          {
+            batchId: batch.id,
+            tier: 'ENTERPRISE',
+            resumeItemId: item.id,
+            rawText: item.rawText!,
+            organizationId,
+          },
           JOB_RETRY_OPTIONS,
         ),
       ),
+      ...jdItems.text.map((item) =>
+        this.jdParseQueue.add(
+          'jd-parse',
+          { batchId: batch.id, tier: 'ENTERPRISE', jdItemId: item.id, rawText: item.rawText! },
+          JOB_RETRY_OPTIONS,
+        ),
+      ),
+      ...jdItems.file.map((item, index) => {
+        const fa = jdFileAssets[index];
+
+        return this.jdParseQueue.add(
+          'jd-parse',
+          {
+            batchId: batch.id,
+            tier: 'ENTERPRISE',
+            jdItemId: item.id,
+            storageKey: fa.storageKey,
+            bucket: fa.bucket,
+            fileName: fa.fileName,
+            fileType: fa.fileType,
+          },
+          JOB_RETRY_OPTIONS,
+        );
+      }),
     ]);
 
     return {
       batchId: batch.id,
       status: 'PARSING' as const,
-      totalCvCount: resumeItems.length,
-      totalJdCount: jdItems.length,
+      totalCvCount: resumeItems.file.length + resumeItems.text.length,
+      totalJdCount: jdItems.text.length + jdItems.file.length,
     };
   }
 }
