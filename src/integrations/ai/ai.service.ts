@@ -8,6 +8,7 @@ import {
   AiHealthData,
   AiServiceResponse,
   EvaluationResult,
+  ParseJobDescriptionRequest,
   ParseResumeRequest,
   ParseResumeResult,
   ParsedJobDescriptionData,
@@ -42,14 +43,12 @@ export class AiService {
     });
   }
 
-  async parseJobDescription(rawText: string): Promise<ParsedJobDescriptionData> {
+  async parseJobDescription(payload: ParseJobDescriptionRequest): Promise<ParsedJobDescriptionData> {
     return this.request<ParsedJobDescriptionData>('POST /parse/job-description', async () => {
       const response = await firstValueFrom(
         this.httpService.post<AiServiceResponse<ParsedJobDescriptionData>>(
           '/parse/job-description',
-          {
-            raw_text: rawText,
-          },
+          payload,
         ),
       );
 
@@ -102,6 +101,12 @@ export class AiService {
       success?: boolean;
       message?: string;
       errors?: unknown[];
+      // FastAPI's own default error shape ({"detail": ...}) leaks through
+      // for any error the AI service's exception handlers don't cover —
+      // detail can be a plain string or an array of Pydantic validation
+      // error objects ({loc, msg, type}). Fall back to it defensively
+      // rather than trusting `message` is always present.
+      detail?: string | Array<{ msg?: string }>;
     }>;
 
     if (axiosError.code === 'ECONNABORTED') {
@@ -109,7 +114,7 @@ export class AiService {
     }
 
     if (axiosError.response) {
-      const message = axiosError.response.data?.message || 'AI service returned an error';
+      const message = axiosError.response.data?.message || this.extractDetailMessage(axiosError.response.data?.detail) || 'AI service returned an error';
 
       return new AppException(message, 502);
     }
@@ -123,5 +128,17 @@ export class AiService {
     }
 
     return new AppException('Unexpected AI service error', 502);
+  }
+
+  private extractDetailMessage(detail: string | Array<{ msg?: string }> | undefined): string | null {
+    if (typeof detail === 'string') {
+      return detail;
+    }
+
+    if (Array.isArray(detail) && detail.length > 0) {
+      return detail.map((item) => item.msg).filter(Boolean).join('; ') || null;
+    }
+
+    return null;
   }
 }
