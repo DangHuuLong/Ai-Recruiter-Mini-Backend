@@ -36,7 +36,7 @@ export class ResumeParseProcessor extends WorkerHost {
     try {
       if (isFileBased && checksum) {
         const cached = await store.findCachedParsedResumeByChecksum(
-          { organizationId: job.data.organizationId },
+          { organizationId: job.data.organizationId, sessionId: job.data.sessionId },
           checksum,
         );
 
