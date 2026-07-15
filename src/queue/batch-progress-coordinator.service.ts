@@ -98,7 +98,17 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     const job = jobId ? await queue.getJob(jobId) : undefined;
     if (!job) return;
 
-    const { batchId, tier } = job.data;
+    await this.checkParseCompletion(job.data.batchId, job.data.tier);
+  }
+
+  /**
+   * Advances PARSING -> SCORING if every CV/JD item has settled. Called both
+   * from queue events and directly by batch creation, since a batch made
+   * entirely of resumeStructured/jobDescriptionStructured items enqueues no
+   * resume-parse/jd-parse jobs at all — without this direct call, such a
+   * batch would never receive a queue event and would sit in PARSING forever.
+   */
+  async checkParseCompletion(batchId: string, tier: BatchTier): Promise<void> {
     const store = this.storeFactory.forTier(tier);
 
     const { completed, total } = await store.incrementParseCompleted(batchId);
@@ -106,6 +116,10 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
 
     const acquired = await this.acquireTransitionLock(batchId, 'scoring-stage');
     if (!acquired) return;
+
+    // A cancel() call can land after items already in flight finish parsing —
+    // don't resurrect a cancelled batch back into SCORING.
+    if ((await store.getBatchStatusOnly(batchId)) === 'CANCELLED') return;
 
     await this.startScoringStage(store, batchId, tier);
   }
@@ -169,6 +183,10 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
 
     const acquired = await this.acquireTransitionLock(batchId, 'completion');
     if (!acquired) return;
+
+    // Same rationale as checkParseCompletion — don't overwrite CANCELLED
+    // with a COMPLETED status just because in-flight scoring jobs finished.
+    if ((await store.getBatchStatusOnly(batchId)) === 'CANCELLED') return;
 
     const finalStatus = failed > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED';
     await store.markBatchStatus(batchId, finalStatus);
