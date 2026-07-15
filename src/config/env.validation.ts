@@ -49,4 +49,12 @@ export const envValidationSchema = Joi.object({
   // Phase 3 — batch size limits for enterprise (persisted) scoring batches.
   ENTERPRISE_MAX_FILES_PER_BATCH: Joi.number().integer().positive().default(2000),
   ENTERPRISE_MAX_JDS_PER_BATCH: Joi.number().integer().positive().default(50),
+
+  // Phase 4 — public (anonymous, ephemeral) batches. Kept intentionally small
+  // by default since there's no auth to rate-limit abuse beyond IP+session.
+  PUBLIC_MAX_FILES_PER_BATCH: Joi.number().integer().positive().default(2),
+  PUBLIC_MAX_JDS_PER_BATCH: Joi.number().integer().positive().default(10),
+  PUBLIC_BATCH_TTL_SECONDS: Joi.number().integer().positive().default(21600),
+  PUBLIC_RATE_LIMIT_MAX_BATCHES_PER_HOUR: Joi.number().integer().positive().default(5),
+  SUPABASE_PUBLIC_TEMP_BUCKET: Joi.string().default('file-public'),
 });
