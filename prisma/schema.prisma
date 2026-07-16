@@ -660,3 +660,126 @@ model ScoringBatchResult {
   @@index([batchId])
   @@index([overallScore])
 }
+
+// ─────────────────────────────────────────────
+// INTERVIEW QUESTION ONTOLOGY (Phase 7 foundation)
+// ─────────────────────────────────────────────
+
+// Reusable question bank for vector-retrieval-backed interview question
+// generation, replacing the current pure template output of
+// build_interview_questions() (AI service). Separate from
+// EvaluationInterviewQuestion (which stores the questions actually shown
+// for one Evaluation) — this table is the shared knowledge base retrieval
+// draws from. See PLAN.md Phase 7 for the full design rationale (why
+// occupation_family/enablers/business_context instead of the IT-biased
+// domain/tech_stack/project_archetype first draft).
+enum OccupationFamily {
+  IT
+  MARKETING
+  DESIGN
+  DATA
+  PRODUCT
+  SALES
+  LEGAL
+}
+
+enum CompetencyType {
+  HARD_SKILL
+  TOOL_SKILL
+  KNOWLEDGE_AREA
+  SOFT_SKILL
+  METHODOLOGY
+  COMPLIANCE
+}
+
+enum AssessmentTarget {
+  RECALL
+  APPLICATION
+  ANALYSIS
+  DECISION_MAKING
+  COMMUNICATION
+  LEADERSHIP
+  OWNERSHIP
+}
+
+enum ExperienceBucket {
+  ZERO_TO_ONE
+  TWO_TO_FOUR
+  FIVE_TO_EIGHT
+  EIGHT_PLUS
+}
+
+enum AutonomyLevel {
+  WORKS_INDEPENDENTLY
+  LEADS_PROJECTS
+  DEFINES_STRATEGY
+  MANAGES_PEOPLE
+}
+
+enum InterviewQuestionType {
+  EXPERIENCE_VALIDATION
+  ARTIFACT_DISCUSSION
+  DECISION_MAKING
+  BEHAVIORAL_EVIDENCE
+  REFLECTION
+}
+
+enum InterviewQuestionSource {
+  SEED
+  AI_GENERATED
+}
+
+enum QuestionQualityGateStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model InterviewQuestionEntry {
+  id               String @id @default(cuid())
+  questionText     String
+
+  occupationFamily OccupationFamily
+  specialization   String
+  enablers         String[]
+  businessContext  String
+
+  competency       String
+  competencyType   CompetencyType
+
+  assessmentTarget AssessmentTarget
+
+  experienceBucket ExperienceBucket
+  autonomyLevel    AutonomyLevel
+
+  questionType     InterviewQuestionType
+
+  rubric           String[]
+
+  // pgvector column — Prisma has no native vector type, so raw SQL
+  // ($queryRaw/$executeRaw) is required for embedding writes and
+  // similarity search until retrieval is implemented (next branch).
+  // Dimension 768 matches Gemini text-embedding-004 — chosen because
+  // GEMINI_API_KEY is already configured (unused) in both repos, avoiding
+  // a new embedding provider/credential.
+  embedding Unsupported("vector(768)")?
+
+  source            InterviewQuestionSource   @default(SEED)
+  qualityGateStatus QuestionQualityGateStatus @default(PENDING_REVIEW)
+  usageCount        Int                       @default(0)
+  lastUsedAt        DateTime?
+
+  // Traceability back to the batch/items that triggered an AI-fallback
+  // generation — null for seed data. No FK: this table must outlive any
+  // single batch (public batches are ephemeral/Redis-only, see Phase 4).
+  originBatchId      String?
+  originResumeItemId String?
+  originJdItemId     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([occupationFamily, specialization])
+  @@index([questionType])
+  @@index([qualityGateStatus])
+}
