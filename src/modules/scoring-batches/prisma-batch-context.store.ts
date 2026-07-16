@@ -184,6 +184,15 @@ export class PrismaBatchContextStore implements BatchContextStore {
     });
   }
 
+  async getBatchStatusOnly(batchId: string): Promise<ScoringBatchStatus> {
+    const batch = await this.prisma.scoringBatch.findUniqueOrThrow({
+      where: { id: batchId },
+      select: { status: true },
+    });
+
+    return batch.status;
+  }
+
   async getNotifyTarget(
     batchId: string,
   ): Promise<{ webhookUrl?: string | null; email?: string | null }> {

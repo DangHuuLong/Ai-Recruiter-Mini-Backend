@@ -4,6 +4,7 @@ import { Module } from '@nestjs/common';
 import { PublicBatchesController } from './public-batches.controller';
 import { PublicBatchesService } from './public-batches.service';
 import { QUEUE_NAMES } from '../../queue/queue.constants';
+import { QueueModule } from '../../queue/queue.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { QUEUE_NAMES } from '../../queue/queue.constants';
       { name: QUEUE_NAMES.RESUME_PARSE },
       { name: QUEUE_NAMES.JD_PARSE },
     ),
+    QueueModule,
   ],
   controllers: [PublicBatchesController],
   providers: [PublicBatchesService],

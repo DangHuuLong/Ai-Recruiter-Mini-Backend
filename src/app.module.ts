@@ -9,6 +9,7 @@ import { queueConfig } from './config/queue.config';
 import { redisConfig } from './config/redis.config';
 import { supabaseConfig } from './config/supabase.config';
 import { AnonymousSessionMiddleware } from './common/middleware/anonymous-session.middleware';
+import { ScoringModule } from './modules/evaluations/scoring/scoring.module';
 import { PrismaModule } from './database/prisma/prisma.module';
 import { AiModule } from './integrations/ai/ai.module';
 import { EmailModule } from './integrations/email/email.module';
@@ -42,6 +43,7 @@ import { QueueModule } from './queue/queue.module';
     EmailModule,
     HealthModule,
     AiModule,
+    ScoringModule,
     AuthTokenModule,
     AuthModule,
     UsersModule,

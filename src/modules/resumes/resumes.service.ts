@@ -146,6 +146,10 @@ export class ResumesService {
       throw new AppException('Resume not found', 404);
     }
 
+    if (!resume.fileAsset) {
+      throw new AppException('Resume has no backing file to parse', 409);
+    }
+
     await this.prisma.resume.update({
       where: { id },
       data: {

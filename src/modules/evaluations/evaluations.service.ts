@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { CriterionName, EvaluationStatus, Prisma, SkillMatchType } from '@prisma/client';
+import { EvaluationStatus, Prisma } from '@prisma/client';
 
 import { CreateEvaluationDto } from './dto/create-evaluation.dto';
 import { EvaluationQueryDto } from './dto/evaluation-query.dto';
+import { ScoringResultMapperService } from './scoring/scoring.service';
 import { DEFAULT_EVALUATION_CRITERIA } from '../../common/constants/default-evaluation-criteria';
 import { AppException } from '../../common/exceptions/app.exception';
 import {
@@ -22,6 +23,7 @@ export class EvaluationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
+    private readonly scoringMapper: ScoringResultMapperService,
   ) {}
 
   async create(createEvaluationDto: CreateEvaluationDto, currentUserId: string, organizationId: string) {
@@ -315,33 +317,30 @@ export class EvaluationsService {
     applicationId: string,
     result: EvaluationResult,
   ) {
-    const criterionRows = result.criteria.map((item) => {
-      const criterion = this.toCriterionName(item.criterion);
-      const weight = this.clampWeight(item.weight);
-      const scoreNormalized = this.clampScore(item.score_normalized);
+    const mappedCriteria = this.scoringMapper.mapCriteria(result);
+    const criterionRows = mappedCriteria.map((item) => ({
+      evaluationId,
+      criterion: this.scoringMapper.toCriterionName(item.criterion),
+      weight: item.weight,
+      scoreNormalized: item.scoreNormalized,
+      reason: item.reason,
+      evidence: this.toJsonArray(item.evidence),
+    }));
 
-      return {
-        evaluationId,
-        criterion,
-        weight,
-        scoreNormalized,
-        reason: item.reason,
-        evidence: this.toJsonArray(item.evidence),
-      };
-    });
-
-    const overallScore = this.calculateOverallScore(criterionRows);
+    const overallScore = this.scoringMapper.calculateOverallScore(mappedCriteria);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.evaluationCriterionScore.createMany({ data: criterionRows });
 
       if (result.skills.length > 0) {
+        const mappedSkills = this.scoringMapper.mapSkills(result);
+
         await tx.evaluationSkill.createMany({
-          data: result.skills.map((item) => ({
+          data: mappedSkills.map((item) => ({
             evaluationId,
-            skillName: item.skill_name,
-            normalizedSkillName: item.normalized_skill_name,
-            type: this.toSkillMatchType(item.type),
+            skillName: item.skillName,
+            normalizedSkillName: item.normalizedSkillName,
+            type: this.scoringMapper.toSkillMatchType(item.type),
             importance: item.importance,
             evidence: this.toJsonNullable(item.evidence),
             note: item.note,
@@ -350,15 +349,17 @@ export class EvaluationsService {
       }
 
       if (result.interview_questions.length > 0) {
+        const mappedQuestions = this.scoringMapper.mapInterviewQuestions(result);
+
         await tx.evaluationInterviewQuestion.createMany({
-          data: result.interview_questions.map((item, index) => ({
+          data: mappedQuestions.map((item) => ({
             evaluationId,
             question: item.question,
             category: item.category,
-            linkedSkill: item.linked_skill,
+            linkedSkill: item.linkedSkill,
             difficulty: item.difficulty,
             rationale: item.rationale,
-            displayOrder: item.display_order ?? index + 1,
+            displayOrder: item.displayOrder,
           })),
         });
       }
@@ -543,43 +544,6 @@ export class EvaluationsService {
     if (!evaluation) {
       throw new AppException('Evaluation not found', 404);
     }
-  }
-
-  private calculateOverallScore(criterionRows: Array<{ scoreNormalized: number; weight: number }>) {
-    const score = criterionRows.reduce(
-      (total, item) => total + item.scoreNormalized * item.weight * 100,
-      0,
-    );
-
-    return Math.round(score * 100) / 100;
-  }
-
-  private toCriterionName(value: string): CriterionName {
-    if (Object.values(CriterionName).includes(value as CriterionName)) {
-      return value as CriterionName;
-    }
-
-    throw new AppException(`Unsupported criterion: ${value}`, 502);
-  }
-
-  private toSkillMatchType(value: string): SkillMatchType {
-    if (value === 'PARTIAL') {
-      return SkillMatchType.RELATED;
-    }
-
-    if (Object.values(SkillMatchType).includes(value as SkillMatchType)) {
-      return value as SkillMatchType;
-    }
-
-    throw new AppException(`Unsupported skill match type: ${value}`, 502);
-  }
-
-  private clampScore(value: number) {
-    return Math.min(Math.max(value, 0), 1);
-  }
-
-  private clampWeight(value: number) {
-    return Math.min(Math.max(value, 0), 1);
   }
 
   private toJsonArray(value: unknown): Prisma.InputJsonArray {

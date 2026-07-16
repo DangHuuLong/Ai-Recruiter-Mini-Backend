@@ -15,6 +15,7 @@ import {
   resolveResumeFileType,
 } from '../../common/utils/upload-file.util';
 import { SupabaseStorageService } from '../../integrations/storage/supabase-storage.service';
+import { BatchProgressCoordinatorService } from '../../queue/batch-progress-coordinator.service';
 import { JdParseJobData, ResumeParseJobData } from '../../queue/jobs/job-payloads.types';
 import { QUEUE_NAMES } from '../../queue/queue.constants';
 import { CreateUploadUrlsDto } from '../scoring-batches/dto/create-upload-urls.dto';
@@ -32,6 +33,7 @@ export class PublicBatchesService {
     private readonly configService: ConfigService,
     private readonly storageService: SupabaseStorageService,
     private readonly redisStore: RedisBatchContextStore,
+    private readonly coordinator: BatchProgressCoordinatorService,
     @InjectQueue(QUEUE_NAMES.RESUME_PARSE) private readonly resumeParseQueue: Queue<ResumeParseJobData>,
     @InjectQueue(QUEUE_NAMES.JD_PARSE) private readonly jdParseQueue: Queue<JdParseJobData>,
   ) {}
@@ -260,6 +262,8 @@ export class PublicBatchesService {
         ),
       ),
     ]);
+
+    await this.coordinator.checkParseCompletion(batchId, 'PUBLIC');
 
     return {
       batchId,

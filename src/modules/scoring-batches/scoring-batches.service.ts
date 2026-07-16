@@ -1,11 +1,14 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ScoringBatch } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 
 import { CreateScoringBatchDto } from './dto/create-scoring-batch.dto';
 import { CreateUploadUrlsDto } from './dto/create-upload-urls.dto';
+import { MatrixQueryDto } from './dto/matrix-query.dto';
+import { SkillGapQueryDto } from './dto/skill-gap-query.dto';
 import { mapStructuredJdToParsedData } from './job-description-structured.mapper';
 import { mapStructuredResumeToParsedData } from './resume-structured.mapper';
 import { AppException } from '../../common/exceptions/app.exception';
@@ -18,6 +21,7 @@ import {
 } from '../../common/utils/upload-file.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { SupabaseStorageService } from '../../integrations/storage/supabase-storage.service';
+import { BatchProgressCoordinatorService } from '../../queue/batch-progress-coordinator.service';
 import { JdParseJobData, ResumeParseJobData } from '../../queue/jobs/job-payloads.types';
 import { QUEUE_NAMES } from '../../queue/queue.constants';
 
@@ -30,6 +34,7 @@ export class ScoringBatchesService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly storageService: SupabaseStorageService,
+    private readonly coordinator: BatchProgressCoordinatorService,
     @InjectQueue(QUEUE_NAMES.RESUME_PARSE) private readonly resumeParseQueue: Queue<ResumeParseJobData>,
     @InjectQueue(QUEUE_NAMES.JD_PARSE) private readonly jdParseQueue: Queue<JdParseJobData>,
   ) {}
@@ -330,6 +335,8 @@ export class ScoringBatchesService {
       }),
     ]);
 
+    await this.coordinator.checkParseCompletion(batch.id, 'ENTERPRISE');
+
     return {
       batchId: batch.id,
       status: 'PARSING' as const,
@@ -337,4 +344,259 @@ export class ScoringBatchesService {
       totalJdCount: jdItems.text.length + jdItems.file.length + jdItems.structured.length,
     };
   }
+
+  async getStatus(batchId: string, organizationId: string) {
+    const batch = await this.ensureBatchExists(batchId, organizationId);
+
+    return {
+      batchId: batch.id,
+      name: batch.name,
+      status: batch.status,
+      progress: this.buildProgress(batch),
+      startedAt: batch.startedAt,
+      completedAt: batch.completedAt,
+      createdAt: batch.createdAt,
+    };
+  }
+
+  async getMatrix(batchId: string, organizationId: string, query: MatrixQueryDto) {
+    const batch = await this.ensureBatchExists(batchId, organizationId);
+
+    const rows = await this.prisma.scoringBatchResume.findMany({
+      where: { batchId },
+      orderBy: { id: 'asc' },
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      take: query.limit,
+      select: {
+        id: true,
+        candidateLabel: true,
+        status: true,
+        parsingError: true,
+        fileAsset: { select: { fileName: true } },
+      },
+    });
+
+    const columns = await this.prisma.scoringBatchJobDescription.findMany({
+      where: { batchId },
+      orderBy: { id: 'asc' },
+      select: { id: true, label: true, status: true, parsingError: true },
+    });
+
+    const rowIds = rows.map((row) => row.id);
+    const cells = await this.prisma.scoringBatchResult.findMany({
+      where: { batchId, resumeItemId: { in: rowIds } },
+      select: { resumeItemId: true, jdItemId: true, status: true, overallScore: true, error: true },
+    });
+
+    const cellsByResumeId = new Map<string, typeof cells>();
+    for (const cell of cells) {
+      const bucket = cellsByResumeId.get(cell.resumeItemId) ?? [];
+      bucket.push(cell);
+      cellsByResumeId.set(cell.resumeItemId, bucket);
+    }
+
+    const topN = query.topN;
+
+    const rowsWithRanking = rows.map((row) => ({
+      resumeItemId: row.id,
+      fileName: row.fileAsset?.fileName ?? null,
+      candidateName: row.candidateLabel,
+      parseStatus: row.status,
+      parseError: row.parsingError,
+      ...(topN ? { topJds: this.topJdsByScore(cellsByResumeId.get(row.id) ?? [], topN) } : {}),
+    }));
+
+    let columnsWithRanking = columns.map((column) => ({
+      jdItemId: column.id,
+      label: column.label,
+      parseStatus: column.status,
+      parseError: column.parsingError,
+    }));
+
+    if (topN) {
+      const topCvsPerColumn = await Promise.all(
+        columns.map((column) =>
+          this.prisma.scoringBatchResult.findMany({
+            where: { batchId, jdItemId: column.id, status: 'COMPLETED' },
+            orderBy: { overallScore: 'desc' },
+            take: topN,
+            select: { resumeItemId: true, overallScore: true },
+          }),
+        ),
+      );
+
+      columnsWithRanking = columns.map((column, index) => ({
+        jdItemId: column.id,
+        label: column.label,
+        parseStatus: column.status,
+        parseError: column.parsingError,
+        topCvs: topCvsPerColumn[index].map((cell) => ({
+          resumeItemId: cell.resumeItemId,
+          score: cell.overallScore,
+        })),
+      }));
+    }
+
+    return {
+      batchId: batch.id,
+      status: batch.status,
+      progress: this.buildProgress(batch),
+      rows: rowsWithRanking,
+      columns: columnsWithRanking,
+      cells: cells.map((cell) => ({
+        resumeItemId: cell.resumeItemId,
+        jdItemId: cell.jdItemId,
+        status: cell.status,
+        overallScore: cell.overallScore,
+        error: cell.error,
+      })),
+      nextCursor: rows.length === query.limit ? rows[rows.length - 1].id : null,
+    };
+  }
+
+  async getCell(batchId: string, resumeItemId: string, jdItemId: string, organizationId: string) {
+    await this.ensureBatchExists(batchId, organizationId);
+
+    const cell = await this.prisma.scoringBatchResult.findUnique({
+      where: { resumeItemId_jdItemId: { resumeItemId, jdItemId } },
+    });
+
+    if (!cell || cell.batchId !== batchId) {
+      throw new AppException('Cell not found', 404);
+    }
+
+    return cell;
+  }
+
+  async getSkillGapSummary(batchId: string, organizationId: string, query: SkillGapQueryDto) {
+    await this.ensureBatchExists(batchId, organizationId);
+
+    const results = await this.prisma.scoringBatchResult.findMany({
+      where: {
+        batchId,
+        status: 'COMPLETED',
+        ...(query.jdItemId ? { jdItemId: query.jdItemId } : {}),
+      },
+      select: { skills: true },
+    });
+
+    const missingCounts = new Map<string, number>();
+
+    for (const result of results) {
+      const skills = result.skills as unknown as Array<{ skillName: string; type: string }> | null;
+
+      for (const skill of skills ?? []) {
+        if (skill.type !== 'MISSING') continue;
+        missingCounts.set(skill.skillName, (missingCounts.get(skill.skillName) ?? 0) + 1);
+      }
+    }
+
+    const missingSkills = [...missingCounts.entries()]
+      .map(([skillName, missingCount]) => ({ skillName, missingCount }))
+      .sort((a, b) => b.missingCount - a.missingCount);
+
+    return { batchId, totalResultsConsidered: results.length, missingSkills };
+  }
+
+  async exportCsv(batchId: string, organizationId: string): Promise<string> {
+    await this.ensureBatchExists(batchId, organizationId);
+
+    const [resumeItems, jdItems, results] = await Promise.all([
+      this.prisma.scoringBatchResume.findMany({
+        where: { batchId },
+        orderBy: { id: 'asc' },
+        select: { id: true, candidateLabel: true, fileAsset: { select: { fileName: true } } },
+      }),
+      this.prisma.scoringBatchJobDescription.findMany({
+        where: { batchId },
+        orderBy: { id: 'asc' },
+        select: { id: true, label: true },
+      }),
+      this.prisma.scoringBatchResult.findMany({
+        where: { batchId },
+        select: { resumeItemId: true, jdItemId: true, overallScore: true },
+      }),
+    ]);
+
+    const scoreByPairKey = new Map<string, number | null>();
+    for (const result of results) {
+      scoreByPairKey.set(`${result.resumeItemId}:${result.jdItemId}`, result.overallScore);
+    }
+
+    const header = ['Candidate', ...jdItems.map((jd) => jd.label ?? jd.id)];
+    const lines = [header.map(csvEscape).join(',')];
+
+    for (const resume of resumeItems) {
+      const name = resume.candidateLabel ?? resume.fileAsset?.fileName ?? resume.id;
+      const row = [
+        name,
+        ...jdItems.map((jd) => {
+          const score = scoreByPairKey.get(`${resume.id}:${jd.id}`);
+          return score !== undefined && score !== null ? String(score) : '';
+        }),
+      ];
+      lines.push(row.map(csvEscape).join(','));
+    }
+
+    return lines.join('\n');
+  }
+
+  async cancel(batchId: string, organizationId: string) {
+    const batch = await this.ensureBatchExists(batchId, organizationId);
+    const terminalStatuses = new Set(['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'CANCELLED']);
+
+    if (terminalStatuses.has(batch.status)) {
+      throw new AppException(`Cannot cancel a batch in status ${batch.status}`, 409);
+    }
+
+    await this.prisma.scoringBatch.update({
+      where: { id: batchId },
+      data: { status: 'CANCELLED', completedAt: new Date() },
+    });
+
+    return { batchId, status: 'CANCELLED' as const };
+  }
+
+  private async ensureBatchExists(batchId: string, organizationId: string): Promise<ScoringBatch> {
+    const batch = await this.prisma.scoringBatch.findFirst({ where: { id: batchId, organizationId } });
+
+    if (!batch) {
+      throw new AppException('Scoring batch not found', 404);
+    }
+
+    return batch;
+  }
+
+  private buildProgress(batch: ScoringBatch) {
+    return {
+      totalCvCount: batch.totalCvCount,
+      totalJdCount: batch.totalJdCount,
+      totalPairCount: batch.totalPairCount,
+      completedPairCount: batch.completedPairCount,
+      failedPairCount: batch.failedPairCount,
+      percent:
+        batch.totalPairCount > 0
+          ? Math.round((batch.completedPairCount / batch.totalPairCount) * 10000) / 100
+          : 0,
+    };
+  }
+
+  private topJdsByScore(
+    cells: Array<{ jdItemId: string; overallScore: number | null }>,
+    topN: number,
+  ): Array<{ jdItemId: string; score: number | null }> {
+    return [...cells]
+      .filter((cell) => cell.overallScore !== null)
+      .sort((a, b) => (b.overallScore ?? 0) - (a.overallScore ?? 0))
+      .slice(0, topN)
+      .map((cell) => ({ jdItemId: cell.jdItemId, score: cell.overallScore }));
+  }
+}
+
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+
+  return value;
 }

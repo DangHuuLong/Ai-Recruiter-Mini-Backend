@@ -44,6 +44,6 @@ import { EmailModule } from '../integrations/email/email.module';
     NotifyProcessor,
     BatchProgressCoordinatorService,
   ],
-  exports: [BullModule],
+  exports: [BullModule, BatchProgressCoordinatorService],
 })
 export class QueueModule {}

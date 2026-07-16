@@ -30,6 +30,10 @@ export class JdParseProcessor extends WorkerHost {
     const store = this.storeFactory.forTier(tier);
     const isFileBased = Boolean(storageKey);
 
+    if ((await store.getBatchStatusOnly(batchId)) === 'CANCELLED') {
+      return;
+    }
+
     try {
       const parsedData = isFileBased
         ? await this.aiService.parseJobDescription({
