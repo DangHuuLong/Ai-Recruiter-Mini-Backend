@@ -14,6 +14,10 @@ enum UserRole {
   ADMIN
   RECRUITER
   HIRING_MANAGER
+  // Manages the shared (non-org-scoped) InterviewQuestionEntry bank —
+  // see Phase 7. Distinct from ADMIN because it's a cross-cutting content
+  // role, not an organization-management role.
+  DEV
 }
 
 enum FileAssetStatus {

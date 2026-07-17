@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AuthTokenType } from '@prisma/client';
+import { AuthTokenType, UserRole } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 
 import { AuthTokenService } from './auth-token.service';
@@ -162,7 +162,7 @@ export class AuthService {
     organizationId: string;
     email: string;
     fullName: string | null;
-    role: 'ADMIN' | 'RECRUITER' | 'HIRING_MANAGER';
+    role: UserRole;
   }) {
     const secret = this.configService.getOrThrow<string>('JWT_SECRET');
     const expiresInSeconds = this.configService.get<number>('JWT_EXPIRES_IN_SECONDS') ?? 86400;

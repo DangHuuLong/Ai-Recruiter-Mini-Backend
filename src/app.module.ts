@@ -24,6 +24,7 @@ import { CandidatesModule } from './modules/candidates/candidates.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
+import { InterviewQuestionsModule } from './modules/interview-questions/interview-questions.module';
 import { JobDescriptionsModule } from './modules/job-descriptions/job-descriptions.module';
 import { PublicBatchesModule } from './modules/public-batches/public-batches.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
@@ -63,6 +64,7 @@ import { QueueModule } from './queue/queue.module';
     ResumesModule,
     JobDescriptionsModule,
     ApplicationsModule,
+    InterviewQuestionsModule,
     EvaluationsModule,
     BatchStoreModule,
     QueueModule,
