@@ -5,6 +5,7 @@ import { appConfig } from './config/app.config';
 import { databaseConfig } from './config/database.config';
 import { emailConfig } from './config/email.config';
 import { envValidationSchema } from './config/env.validation';
+import { llmProvidersConfig } from './config/llm-providers.config';
 import { queueConfig } from './config/queue.config';
 import { redisConfig } from './config/redis.config';
 import { supabaseConfig } from './config/supabase.config';
@@ -13,6 +14,7 @@ import { ScoringModule } from './modules/evaluations/scoring/scoring.module';
 import { PrismaModule } from './database/prisma/prisma.module';
 import { AiModule } from './integrations/ai/ai.module';
 import { EmailModule } from './integrations/email/email.module';
+import { LlmProvidersModule } from './integrations/llm-providers/llm-providers.module';
 import { RedisModule } from './integrations/redis/redis.module';
 import { StorageModule } from './integrations/storage/storage.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
@@ -22,6 +24,7 @@ import { CandidatesModule } from './modules/candidates/candidates.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
+import { InterviewQuestionsModule } from './modules/interview-questions/interview-questions.module';
 import { JobDescriptionsModule } from './modules/job-descriptions/job-descriptions.module';
 import { PublicBatchesModule } from './modules/public-batches/public-batches.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
@@ -34,7 +37,15 @@ import { QueueModule } from './queue/queue.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, supabaseConfig, redisConfig, emailConfig, queueConfig],
+      load: [
+        appConfig,
+        databaseConfig,
+        supabaseConfig,
+        redisConfig,
+        emailConfig,
+        queueConfig,
+        llmProvidersConfig,
+      ],
       validationSchema: envValidationSchema,
     }),
     PrismaModule,
@@ -43,6 +54,7 @@ import { QueueModule } from './queue/queue.module';
     EmailModule,
     HealthModule,
     AiModule,
+    LlmProvidersModule,
     ScoringModule,
     AuthTokenModule,
     AuthModule,
@@ -52,6 +64,7 @@ import { QueueModule } from './queue/queue.module';
     ResumesModule,
     JobDescriptionsModule,
     ApplicationsModule,
+    InterviewQuestionsModule,
     EvaluationsModule,
     BatchStoreModule,
     QueueModule,

@@ -56,4 +56,33 @@ export const envValidationSchema = Joi.object({
   PUBLIC_BATCH_TTL_SECONDS: Joi.number().integer().positive().default(21600),
   PUBLIC_RATE_LIMIT_MAX_BATCHES_PER_HOUR: Joi.number().integer().positive().default(5),
   SUPABASE_PUBLIC_TEMP_BUCKET: Joi.string().default('file-public'),
+
+  // Phase 7 — LLM provider key pools for interview question generation.
+  // Each provider gets up to 4 keys, rotated across calls for rate-limit
+  // resilience and to continue a response that got cut off mid-generation
+  // (finish_reason=length). Gemini is embedding-only here (chat uses
+  // GEMINI_MODEL above); GPT/Groq/Cerebras are OpenAI-compatible chat pools.
+  GEMINI_API_KEY_1: Joi.string().optional(),
+  GEMINI_API_KEY_2: Joi.string().optional(),
+  GEMINI_API_KEY_3: Joi.string().optional(),
+  GEMINI_API_KEY_4: Joi.string().optional(),
+  GEMINI_EMBEDDING_MODEL: Joi.string().default('gemini-embedding-001'),
+
+  GPT_API_KEY_1: Joi.string().optional(),
+  GPT_API_KEY_2: Joi.string().optional(),
+  GPT_API_KEY_3: Joi.string().optional(),
+  GPT_API_KEY_4: Joi.string().optional(),
+  GPT_MODEL: Joi.string().default('gpt-4o-mini'),
+
+  GROQ_API_KEY_1: Joi.string().optional(),
+  GROQ_API_KEY_2: Joi.string().optional(),
+  GROQ_API_KEY_3: Joi.string().optional(),
+  GROQ_API_KEY_4: Joi.string().optional(),
+  GROQ_MODEL: Joi.string().default('llama-3.3-70b-versatile'),
+
+  CEREBRAS_API_KEY_1: Joi.string().optional(),
+  CEREBRAS_API_KEY_2: Joi.string().optional(),
+  CEREBRAS_API_KEY_3: Joi.string().optional(),
+  CEREBRAS_API_KEY_4: Joi.string().optional(),
+  CEREBRAS_MODEL: Joi.string().default('gpt-oss-120b'),
 });
