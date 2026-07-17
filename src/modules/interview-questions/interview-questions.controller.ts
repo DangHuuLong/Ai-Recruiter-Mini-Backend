@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
+import { BulkCreateInterviewQuestionsDto } from './dto/bulk-create-interview-questions.dto';
 import { CreateInterviewQuestionDto } from './dto/create-interview-question.dto';
 import { InterviewQuestionQueryDto } from './dto/interview-question-query.dto';
 import { UpdateInterviewQuestionDto } from './dto/update-interview-question.dto';
@@ -25,6 +26,17 @@ export class InterviewQuestionsController {
     return {
       message: 'Interview question created successfully',
       data: question,
+    };
+  }
+
+  @Post('bulk')
+  async createBulk(@Body() bulkDto: BulkCreateInterviewQuestionsDto) {
+    const results = await this.interviewQuestionsService.createBulk(bulkDto.items);
+    const succeeded = results.filter((r) => r.success).length;
+
+    return {
+      message: `Created ${succeeded}/${results.length} interview questions`,
+      data: results,
     };
   }
 

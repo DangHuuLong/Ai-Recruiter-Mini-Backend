@@ -49,6 +49,35 @@ export class InterviewQuestionsService {
     });
   }
 
+  /**
+   * Creates each item independently (sequential, not Promise.all — avoids
+   * firing a burst of concurrent Gemini calls that would just trip rate
+   * limits faster). One bad item doesn't block the rest, matching the
+   * partial-failure philosophy already used for ScoringBatch: the caller
+   * gets a per-item result list rather than an all-or-nothing failure.
+   */
+  async createBulk(items: CreateInterviewQuestionDto[]) {
+    const results: Array<
+      { index: number; success: true; data: Awaited<ReturnType<InterviewQuestionsService['create']>> }
+      | { index: number; success: false; error: string }
+    > = [];
+
+    for (const [index, dto] of items.entries()) {
+      try {
+        const created = await this.create(dto);
+        results.push({ index, success: true, data: created });
+      } catch (error) {
+        results.push({
+          index,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return results;
+  }
+
   async update(id: string, dto: UpdateInterviewQuestionDto) {
     const existing = await this.ensureExists(id);
     const newEmbedding =
