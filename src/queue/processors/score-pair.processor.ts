@@ -37,9 +37,10 @@ export class ScorePairProcessor extends WorkerHost {
     }
 
     try {
-      const [resumeData, jdData] = await Promise.all([
+      const [resumeData, jdData, taxonomy] = await Promise.all([
         store.getResumeParsedData(batchId, resumeItemId),
         store.getJdParsedData(batchId, jdItemId),
+        store.getJdTaxonomy(batchId, jdItemId),
       ]);
 
       if (!resumeData || !jdData) {
@@ -53,6 +54,7 @@ export class ScorePairProcessor extends WorkerHost {
       }
 
       const result = await this.aiService.scoreApplication(resumeData, jdData, criteria);
+      const interviewQuestions = await this.scoringMapper.buildInterviewQuestions(taxonomy, result);
 
       await store.upsertResult(batchId, resumeItemId, jdItemId, {
         status: 'COMPLETED',
@@ -62,7 +64,7 @@ export class ScorePairProcessor extends WorkerHost {
         skills: this.scoringMapper.mapSkills(result),
         explanation: result.explanation,
         skillGapSummary: result.skill_gap_summary,
-        interviewQuestions: this.scoringMapper.mapInterviewQuestions(result),
+        interviewQuestions,
         evidenceMap: result.evidence_map,
       });
     } catch (error) {

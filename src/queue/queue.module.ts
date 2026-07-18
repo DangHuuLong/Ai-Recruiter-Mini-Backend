@@ -11,6 +11,7 @@ import { ScorePairProcessor } from './processors/score-pair.processor';
 import { NotifyProcessor } from './processors/notify.processor';
 import { AiModule } from '../integrations/ai/ai.module';
 import { EmailModule } from '../integrations/email/email.module';
+import { JobDescriptionsModule } from '../modules/job-descriptions/job-descriptions.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { EmailModule } from '../integrations/email/email.module';
     HttpModule,
     AiModule,
     EmailModule,
+    JobDescriptionsModule,
   ],
   providers: [
     ResumeParseProcessor,

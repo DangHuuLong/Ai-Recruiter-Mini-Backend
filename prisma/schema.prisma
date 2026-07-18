@@ -623,6 +623,9 @@ model ScoringBatchJobDescription {
   parsedData       Json?
   parsingError     String?
   jobDescriptionId String?
+  // Set by JobDescriptionClassifierService right after parsedData succeeds — null if outside the covered taxonomy.
+  occupationFamily OccupationFamily?
+  specialization   String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 

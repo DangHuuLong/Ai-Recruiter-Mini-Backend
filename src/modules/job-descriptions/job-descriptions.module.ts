@@ -12,6 +12,6 @@ import { LlmProvidersModule } from '../../integrations/llm-providers/llm-provide
   imports: [AiModule, LlmProvidersModule],
   controllers: [JobDescriptionsController, JobSkillsController],
   providers: [JobDescriptionsService, JobSkillsService, JobDescriptionClassifierService],
-  exports: [JobDescriptionsService, JobSkillsService],
+  exports: [JobDescriptionsService, JobSkillsService, JobDescriptionClassifierService],
 })
 export class JobDescriptionsModule {}

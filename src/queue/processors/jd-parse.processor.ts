@@ -6,6 +6,7 @@ import { QUEUE_NAMES } from '../queue.constants';
 import { JdParseJobData } from '../jobs/job-payloads.types';
 import { BatchContextStoreFactory } from '../batch-store/batch-context-store.factory';
 import { AiService } from '../../integrations/ai/ai.service';
+import { JobDescriptionClassifierService } from '../../modules/job-descriptions/job-description-classifier.service';
 import { SupabaseStorageService } from '../../integrations/storage/supabase-storage.service';
 
 const JD_SIGNED_URL_EXPIRES_IN_SECONDS = 300;
@@ -21,6 +22,7 @@ export class JdParseProcessor extends WorkerHost {
     private readonly storeFactory: BatchContextStoreFactory,
     private readonly aiService: AiService,
     private readonly storageService: SupabaseStorageService,
+    private readonly classifierService: JobDescriptionClassifierService,
   ) {
     super();
   }
@@ -46,8 +48,14 @@ export class JdParseProcessor extends WorkerHost {
             ),
           })
         : await this.aiService.parseJobDescription({ raw_text: rawText });
+      const classification = await this.classifierService.classify(parsedData);
 
-      await store.updateJdItem(batchId, jdItemId, { status: 'SUCCESS', parsedData });
+      await store.updateJdItem(batchId, jdItemId, {
+        status: 'SUCCESS',
+        parsedData,
+        occupationFamily: classification?.occupationFamily ?? null,
+        specialization: classification?.specialization ?? null,
+      });
     } catch (error) {
       const statusCode = error instanceof HttpException ? error.getStatus() : 500;
 

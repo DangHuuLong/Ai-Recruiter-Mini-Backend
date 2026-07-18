@@ -230,6 +230,8 @@ export class ScoringBatchPromoteService {
         parsedData: jdItem.parsedData as Prisma.InputJsonValue,
         parserVersion: PROMOTED_PARSER_VERSION,
         parseStatus: 'SUCCESS',
+        occupationFamily: jdItem.occupationFamily ?? undefined,
+        specialization: jdItem.specialization ?? undefined,
       },
     });
 
