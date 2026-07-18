@@ -11,9 +11,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
-// Shared, non-org-scoped question bank (see PLAN.md Phase 7) — gated by the
-// DEV role rather than the usual ADMIN/RECRUITER/HIRING_MANAGER trio, since
-// this curates data for the whole system, not one organization.
 @Controller('interview-questions')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.DEV)
@@ -48,6 +45,19 @@ export class InterviewQuestionsController {
     return {
       message: `Found ${results.length} matching questions`,
       data: results,
+    };
+  }
+
+  // Side-effecting counterpart to /search — kept as a separate endpoint so
+  // /search stays a cheap, pure read. May call an LLM and write new
+  // PENDING_REVIEW rows if the bucket is thin or off-topic for this query.
+  @Post('search-or-generate')
+  async searchOrGenerate(@Body() searchDto: SearchInterviewQuestionsDto) {
+    const result = await this.interviewQuestionsService.searchOrGenerate(searchDto);
+
+    return {
+      message: `Found ${result.existing.length} matching questions, generated ${result.generated.length} new`,
+      data: result,
     };
   }
 
