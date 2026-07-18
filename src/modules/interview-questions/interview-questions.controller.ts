@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { BulkCreateInterviewQuestionsDto } from './dto/bulk-create-interview-questions.dto';
 import { CreateInterviewQuestionDto } from './dto/create-interview-question.dto';
 import { InterviewQuestionQueryDto } from './dto/interview-question-query.dto';
+import { SearchInterviewQuestionsDto } from './dto/search-interview-questions.dto';
 import { UpdateInterviewQuestionDto } from './dto/update-interview-question.dto';
 import { InterviewQuestionsService } from './interview-questions.service';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -36,6 +37,16 @@ export class InterviewQuestionsController {
 
     return {
       message: `Created ${succeeded}/${results.length} interview questions`,
+      data: results,
+    };
+  }
+
+  @Post('search')
+  async search(@Body() searchDto: SearchInterviewQuestionsDto) {
+    const results = await this.interviewQuestionsService.search(searchDto);
+
+    return {
+      message: `Found ${results.length} matching questions`,
       data: results,
     };
   }

@@ -1,12 +1,28 @@
 import { Injectable } from '@nestjs/common';
-import { QuestionQualityGateStatus } from '@prisma/client';
+import { Prisma, QuestionQualityGateStatus } from '@prisma/client';
 
 import { CreateInterviewQuestionDto } from './dto/create-interview-question.dto';
 import { InterviewQuestionQueryDto } from './dto/interview-question-query.dto';
+import { SearchInterviewQuestionsDto } from './dto/search-interview-questions.dto';
 import { UpdateInterviewQuestionDto } from './dto/update-interview-question.dto';
 import { AppException } from '../../common/exceptions/app.exception';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { GeminiEmbeddingService } from '../../integrations/llm-providers/gemini-embedding.service';
+
+export interface SearchResultRow {
+  id: string;
+  questionText: string;
+  specialization: string;
+  businessContext: string;
+  competency: string;
+  competencyType: string;
+  assessmentTarget: string;
+  experienceBucket: string;
+  autonomyLevel: string;
+  questionType: string;
+  rubric: string[];
+  similarity: number;
+}
 
 @Injectable()
 export class InterviewQuestionsService {
@@ -125,6 +141,48 @@ export class InterviewQuestionsService {
     await this.ensureExists(id);
     await this.prisma.interviewQuestionEntry.delete({ where: { id } });
     return { id, deleted: true };
+  }
+
+  /**
+   * Hard-filters on occupationFamily + specialization (+ enablers overlap if
+   * given) first, then ranks the filtered set by pgvector cosine similarity —
+   * "filter cứng trước, rank semantic sau" from PLAN.md Phase 7. Only
+   * APPROVED questions are eligible; PENDING_REVIEW/REJECTED never surface
+   * here. Returns raw similarity scores (not a pass/fail against a
+   * threshold) — the threshold itself hasn't been decided yet, this is what
+   * it gets decided from.
+   */
+  async search(dto: SearchInterviewQuestionsDto): Promise<SearchResultRow[]> {
+    const queryEmbedding = await this.embeddingService.embed(dto.queryText);
+    const vectorLiteral = `[${queryEmbedding.join(',')}]`;
+
+    const enablersFilter =
+      dto.enablers && dto.enablers.length > 0
+        ? Prisma.sql`AND enablers && ${dto.enablers}::text[]`
+        : Prisma.empty;
+
+    return this.prisma.$queryRaw<SearchResultRow[]>`
+      SELECT
+        id,
+        "questionText",
+        specialization,
+        "businessContext",
+        competency,
+        "competencyType",
+        "assessmentTarget",
+        "experienceBucket",
+        "autonomyLevel",
+        "questionType",
+        rubric,
+        1 - (embedding <=> ${vectorLiteral}::vector) AS similarity
+      FROM "InterviewQuestionEntry"
+      WHERE "occupationFamily" = ${dto.occupationFamily}::"OccupationFamily"
+        AND specialization = ${dto.specialization}
+        AND "qualityGateStatus" = 'APPROVED'
+        ${enablersFilter}
+      ORDER BY embedding <=> ${vectorLiteral}::vector
+      LIMIT ${dto.limit}
+    `;
   }
 
   async findAll(query: InterviewQuestionQueryDto) {
