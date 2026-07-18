@@ -281,6 +281,9 @@ model JobDescription {
   parserVersion  String?
   parseStatus    ParseStatus @default(PENDING)
   parsingError   String?
+  // Set by JobDescriptionClassifierService after parse() — null if outside the covered taxonomy.
+  occupationFamily OccupationFamily?
+  specialization   String?
   isActive       Boolean     @default(true)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt

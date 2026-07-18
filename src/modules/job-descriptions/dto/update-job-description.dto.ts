@@ -1,6 +1,17 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { OccupationFamily } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateJobDescriptionDto {
+  // Manual override for JobDescriptionClassifierService's guess — both or neither.
+  @IsOptional()
+  @IsEnum(OccupationFamily)
+  occupationFamily?: OccupationFamily;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  specialization?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(200)
