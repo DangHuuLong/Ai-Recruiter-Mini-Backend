@@ -12,9 +12,6 @@ export const envValidationSchema = Joi.object({
   SUPABASE_SERVICE_ROLE_KEY: Joi.string().required(),
   SUPABASE_BUCKET: Joi.string().default('cv-files'),
 
-  // Required as of Phase 2 (BullMQ queue infra) — previously optional since
-  // RedisService alone gracefully no-ops without it, but BullMQ needs a real
-  // connection to function at all.
   REDIS_URL: Joi.string().required(),
 
   GEMINI_API_KEY: Joi.string().optional(),
@@ -38,30 +35,19 @@ export const envValidationSchema = Joi.object({
   EMAIL_VERIFICATION_TOKEN_TTL_SECONDS: Joi.number().integer().positive().default(86400),
   PASSWORD_RESET_TOKEN_TTL_SECONDS: Joi.number().integer().positive().default(3600),
 
-  // Queue worker concurrency — the AI_SCORE_CONCURRENCY default is deliberately
-  // low since /score/application's CrossEncoder blend has no cacheable
-  // embeddings (one full forward pass per CV-JD pair) and is the real
-  // throughput bottleneck for large batches, not the backend's own concurrency.
   AI_PARSE_RESUME_CONCURRENCY: Joi.number().integer().positive().default(8),
   AI_PARSE_JD_CONCURRENCY: Joi.number().integer().positive().default(8),
   AI_SCORE_CONCURRENCY: Joi.number().integer().positive().default(4),
 
-  // Phase 3 — batch size limits for enterprise (persisted) scoring batches.
   ENTERPRISE_MAX_FILES_PER_BATCH: Joi.number().integer().positive().default(2000),
   ENTERPRISE_MAX_JDS_PER_BATCH: Joi.number().integer().positive().default(50),
 
-  // Phase 4 — public (anonymous, ephemeral) batches.
   PUBLIC_MAX_FILES_PER_BATCH: Joi.number().integer().positive().default(2),
   PUBLIC_MAX_JDS_PER_BATCH: Joi.number().integer().positive().default(10),
   PUBLIC_BATCH_TTL_SECONDS: Joi.number().integer().positive().default(21600),
   PUBLIC_RATE_LIMIT_MAX_BATCHES_PER_HOUR: Joi.number().integer().positive().default(5),
   SUPABASE_PUBLIC_TEMP_BUCKET: Joi.string().default('file-public'),
 
-  // Phase 7 — LLM provider key pools for interview question generation.
-  // Each provider gets up to 4 keys, rotated across calls for rate-limit
-  // resilience and to continue a response that got cut off mid-generation
-  // (finish_reason=length). Gemini is embedding-only here (chat uses
-  // GEMINI_MODEL above); GPT/Groq/Cerebras are OpenAI-compatible chat pools.
   GEMINI_API_KEY_1: Joi.string().optional(),
   GEMINI_API_KEY_2: Joi.string().optional(),
   GEMINI_API_KEY_3: Joi.string().optional(),
@@ -85,4 +71,7 @@ export const envValidationSchema = Joi.object({
   CEREBRAS_API_KEY_3: Joi.string().optional(),
   CEREBRAS_API_KEY_4: Joi.string().optional(),
   CEREBRAS_MODEL: Joi.string().default('gpt-oss-120b'),
+
+  INTERVIEW_QUESTION_SIMILARITY_THRESHOLD: Joi.number().min(0).max(1).default(0.55),
+  INTERVIEW_QUESTION_FALLBACK_GENERATE_COUNT: Joi.number().integer().positive().default(5),
 });

@@ -1,18 +1,44 @@
 import { Injectable } from '@nestjs/common';
-import { QuestionQualityGateStatus } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { Prisma, QuestionQualityGateStatus } from '@prisma/client';
 
 import { CreateInterviewQuestionDto } from './dto/create-interview-question.dto';
 import { InterviewQuestionQueryDto } from './dto/interview-question-query.dto';
+import { SearchInterviewQuestionsDto } from './dto/search-interview-questions.dto';
 import { UpdateInterviewQuestionDto } from './dto/update-interview-question.dto';
+import { InterviewQuestionGeneratorService } from './interview-question-generator.service';
 import { AppException } from '../../common/exceptions/app.exception';
+import { INTERVIEW_QUESTION_TAXONOMY } from '../../common/constants/interview-question-taxonomy';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { GeminiEmbeddingService } from '../../integrations/llm-providers/gemini-embedding.service';
+
+export interface SearchResultRow {
+  id: string;
+  questionText: string;
+  specialization: string;
+  businessContext: string;
+  competency: string;
+  competencyType: string;
+  assessmentTarget: string;
+  experienceBucket: string;
+  autonomyLevel: string;
+  questionType: string;
+  rubric: string[];
+  similarity: number;
+}
+
+export interface SearchOrGenerateResult {
+  existing: SearchResultRow[];
+  generated: Awaited<ReturnType<InterviewQuestionsService['create']>>[];
+}
 
 @Injectable()
 export class InterviewQuestionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: GeminiEmbeddingService,
+    private readonly generatorService: InterviewQuestionGeneratorService,
+    private readonly configService: ConfigService,
   ) {}
 
   async create(dto: CreateInterviewQuestionDto) {
@@ -127,6 +153,88 @@ export class InterviewQuestionsService {
     return { id, deleted: true };
   }
 
+  /**
+   * Hard-filters on occupationFamily + specialization (+ enablers overlap if
+   * given) first, then ranks the filtered set by pgvector cosine similarity —
+   * "filter cứng trước, rank semantic sau" from PLAN.md Phase 7. Only
+   * APPROVED questions are eligible; PENDING_REVIEW/REJECTED never surface
+   * here. Returns raw similarity scores (not a pass/fail against a
+   * threshold) — the threshold itself hasn't been decided yet, this is what
+   * it gets decided from.
+   */
+  async search(dto: SearchInterviewQuestionsDto): Promise<SearchResultRow[]> {
+    // Distinguishes "valid specialization, no data yet" (keep returning empty) from a typo'd one.
+    this.ensureKnownSpecialization(dto.occupationFamily, dto.specialization);
+
+    const queryEmbedding = await this.embeddingService.embed(dto.queryText);
+    const vectorLiteral = `[${queryEmbedding.join(',')}]`;
+
+    const enablersFilter =
+      dto.enablers && dto.enablers.length > 0
+        ? Prisma.sql`AND enablers && ${dto.enablers}::text[]`
+        : Prisma.empty;
+
+    return this.prisma.$queryRaw<SearchResultRow[]>`
+      SELECT
+        id,
+        "questionText",
+        specialization,
+        "businessContext",
+        competency,
+        "competencyType",
+        "assessmentTarget",
+        "experienceBucket",
+        "autonomyLevel",
+        "questionType",
+        rubric,
+        1 - (embedding <=> ${vectorLiteral}::vector) AS similarity
+      FROM "InterviewQuestionEntry"
+      WHERE "occupationFamily" = ${dto.occupationFamily}::"OccupationFamily"
+        AND specialization = ${dto.specialization}
+        AND "qualityGateStatus" = 'APPROVED'
+        ${enablersFilter}
+      ORDER BY embedding <=> ${vectorLiteral}::vector
+      LIMIT ${dto.limit}
+    `;
+  }
+
+  // Wraps search() with an AI-generation fallback for thin/off-topic results — new questions are written back as PENDING_REVIEW.
+  async searchOrGenerate(dto: SearchInterviewQuestionsDto): Promise<SearchOrGenerateResult> {
+    const existing = await this.search(dto);
+
+    const threshold = this.configService.get<number>('INTERVIEW_QUESTION_SIMILARITY_THRESHOLD') ?? 0.55;
+    const needsFallback =
+      existing.length < dto.limit || (existing.length > 0 && existing[0].similarity < threshold);
+
+    if (!needsFallback) {
+      return { existing, generated: [] };
+    }
+
+    const generateCount = this.configService.get<number>('INTERVIEW_QUESTION_FALLBACK_GENERATE_COUNT') ?? 5;
+    const candidates = await this.generatorService.generate({
+      queryText: dto.queryText,
+      occupationFamily: dto.occupationFamily,
+      specialization: dto.specialization,
+      enablers: dto.enablers,
+      count: generateCount,
+    });
+
+    // Sequential, not Promise.all — same reasoning as createBulk: avoids a
+    // burst of concurrent Gemini embedding calls, and one bad item shouldn't
+    // stop the rest from being written back.
+    const generated: SearchOrGenerateResult['generated'] = [];
+    for (const candidate of candidates) {
+      try {
+        generated.push(await this.create(candidate));
+      } catch {
+        // create() already logs its own failures upstream (embedding call);
+        // skip this item and keep going rather than losing the whole batch.
+      }
+    }
+
+    return { existing, generated };
+  }
+
   async findAll(query: InterviewQuestionQueryDto) {
     const where = {
       occupationFamily: query.occupationFamily,
@@ -167,11 +275,20 @@ export class InterviewQuestionsService {
     return entry;
   }
 
-  // embedding is Unsupported("vector(768)") in schema.prisma — Prisma's
-  // generated create/update input types can't reference it at all, so
-  // writing it always needs raw SQL. Accepts either the top-level
-  // PrismaService or a $transaction callback client, since callers need
-  // this inside a transaction (create/update) and standalone (reembed).
+  private ensureKnownSpecialization(occupationFamily: string, specialization: string): void {
+    const taxonomyEntry = INTERVIEW_QUESTION_TAXONOMY.find(
+      (entry) => entry.occupationFamily === occupationFamily,
+    );
+    const known = taxonomyEntry?.specializations ?? [];
+    if (!known.includes(specialization)) {
+      throw new AppException(
+        `Unknown specialization "${specialization}" for occupationFamily "${occupationFamily}". Must be exactly one of: ${known.join(', ')}`,
+        400,
+      );
+    }
+  }
+
+  // embedding is Unsupported("vector(768)") — writes always need raw SQL.
   private async setEmbedding(
     client: PrismaService | Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
     id: string,
