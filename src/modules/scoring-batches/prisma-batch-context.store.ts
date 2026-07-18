@@ -12,6 +12,7 @@ import {
   BatchContextStore,
   CounterResult,
   JdItemPatch,
+  JdTaxonomy,
   ResultPatch,
   ResumeItemPatch,
   ScoreCounterResult,
@@ -45,6 +46,8 @@ export class PrismaBatchContextStore implements BatchContextStore {
         status: patch.status === 'SUCCESS' ? 'SUCCESS' : 'FAILED',
         parsedData: patch.parsedData as object | undefined,
         parsingError: patch.parsingError,
+        occupationFamily: patch.occupationFamily,
+        specialization: patch.specialization,
       },
     });
   }
@@ -143,6 +146,15 @@ export class PrismaBatchContextStore implements BatchContextStore {
     });
 
     return (item?.parsedData as unknown as ParsedJobDescriptionData) ?? null;
+  }
+
+  async getJdTaxonomy(batchId: string, jdItemId: string): Promise<JdTaxonomy | null> {
+    const item = await this.prisma.scoringBatchJobDescription.findUnique({
+      where: { id: jdItemId },
+      select: { occupationFamily: true, specialization: true },
+    });
+
+    return item ? { occupationFamily: item.occupationFamily, specialization: item.specialization } : null;
   }
 
   async findCachedParsedResumeByChecksum(

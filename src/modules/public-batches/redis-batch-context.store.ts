@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ScoringBatchStatus } from '@prisma/client';
+import { OccupationFamily, ScoringBatchStatus } from '@prisma/client';
 import Redis from 'ioredis';
 
 import { DEFAULT_EVALUATION_CRITERIA } from '../../common/constants/default-evaluation-criteria';
@@ -15,6 +15,7 @@ import {
   BatchContextStore,
   CounterResult,
   JdItemPatch,
+  JdTaxonomy,
   ResultPatch,
   ResumeItemPatch,
   ScoreCounterResult,
@@ -37,6 +38,8 @@ export interface PublicJdItemRecord {
   rawText?: string | null;
   parsedData?: ParsedJobDescriptionData | null;
   parsingError?: string | null;
+  occupationFamily?: OccupationFamily | null;
+  specialization?: string | null;
 }
 
 export interface PublicResultRecord {
@@ -210,6 +213,8 @@ export class RedisBatchContextStore implements BatchContextStore {
       status: patch.status,
       parsedData: patch.parsedData ?? current.parsedData,
       parsingError: patch.parsingError ?? current.parsingError,
+      occupationFamily: patch.occupationFamily !== undefined ? patch.occupationFamily : current.occupationFamily,
+      specialization: patch.specialization !== undefined ? patch.specialization : current.specialization,
     };
 
     await client.hset(this.jdsKey(batchId), jdItemId, JSON.stringify(updated));
@@ -294,6 +299,18 @@ export class RedisBatchContextStore implements BatchContextStore {
     }
 
     return (JSON.parse(raw) as PublicJdItemRecord).parsedData ?? null;
+  }
+
+  async getJdTaxonomy(batchId: string, jdItemId: string): Promise<JdTaxonomy | null> {
+    const client = this.redisService.getClient();
+    const raw = await client.hget(this.jdsKey(batchId), jdItemId);
+
+    if (!raw) {
+      return null;
+    }
+
+    const record = JSON.parse(raw) as PublicJdItemRecord;
+    return { occupationFamily: record.occupationFamily ?? null, specialization: record.specialization ?? null };
   }
 
   async findCachedParsedResumeByChecksum(

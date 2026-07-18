@@ -1,5 +1,5 @@
 import { ParsedJobDescriptionData, ParsedResumeData } from '../../common/types/ai-service.types';
-import { ScoringBatchStatus } from '@prisma/client';
+import { OccupationFamily, ScoringBatchStatus } from '@prisma/client';
 
 export interface ResumeItemPatch {
   status: 'SUCCESS' | 'FAILED';
@@ -12,6 +12,13 @@ export interface JdItemPatch {
   status: 'SUCCESS' | 'FAILED';
   parsedData?: ParsedJobDescriptionData;
   parsingError?: string;
+  occupationFamily?: OccupationFamily | null;
+  specialization?: string | null;
+}
+
+export interface JdTaxonomy {
+  occupationFamily: OccupationFamily | null;
+  specialization: string | null;
 }
 
 export interface ResultPatch {
@@ -62,6 +69,7 @@ export interface BatchContextStore {
 
   getResumeParsedData(batchId: string, resumeItemId: string): Promise<ParsedResumeData | null>;
   getJdParsedData(batchId: string, jdItemId: string): Promise<ParsedJobDescriptionData | null>;
+  getJdTaxonomy(batchId: string, jdItemId: string): Promise<JdTaxonomy | null>;
 
   /** Returns a previously-parsed result for a resume with the same checksum, if one exists within this store's caching scope. */
   findCachedParsedResumeByChecksum(
