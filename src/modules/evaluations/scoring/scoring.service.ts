@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { CriterionName, SkillMatchType } from '@prisma/client';
+import { Injectable, Logger } from '@nestjs/common';
+import { CriterionName, OccupationFamily, SkillMatchType } from '@prisma/client';
 
 import { AppException } from '../../../common/exceptions/app.exception';
 import { EvaluationResult } from '../../../common/types/ai-service.types';
+import { InterviewQuestionsService } from '../../interview-questions/interview-questions.service';
 
 export interface MappedCriterion {
   criterion: string;
@@ -30,6 +31,20 @@ export interface MappedInterviewQuestion {
   displayOrder: number;
 }
 
+export interface JobDescriptionTaxonomy {
+  occupationFamily: OccupationFamily | null;
+  specialization: string | null;
+}
+
+// Structural type covering both SearchResultRow and the row returned by
+// InterviewQuestionsService.create() — the two shapes searchOrGenerate() can return.
+interface RetrievedQuestionLike {
+  questionText: string;
+  competency: string;
+  experienceBucket: string;
+  rubric: string[];
+}
+
 /**
  * Shared AI-service-result-to-persistence mapping, used by both the
  * single-application EvaluationsService (relational rows) and the
@@ -39,6 +54,62 @@ export interface MappedInterviewQuestion {
  */
 @Injectable()
 export class ScoringResultMapperService {
+  private readonly logger = new Logger(ScoringResultMapperService.name);
+
+  constructor(private readonly interviewQuestionsService: InterviewQuestionsService) {}
+
+  // Prefers the retrieval-backed question bank when the JD is classified; falls back to the
+  // AI service's rule-based questions otherwise (or if retrieval fails/comes up empty) — this
+  // fallback must never throw, since a broken retrieval path must not fail evaluation/scoring.
+  async buildInterviewQuestions(
+    taxonomy: JobDescriptionTaxonomy | null,
+    result: EvaluationResult,
+  ): Promise<MappedInterviewQuestion[]> {
+    if (taxonomy?.occupationFamily && taxonomy.specialization) {
+      try {
+        const queryText = this.buildInterviewQuestionQueryText(result);
+        if (queryText) {
+          const { existing, generated } = await this.interviewQuestionsService.searchOrGenerate({
+            queryText,
+            occupationFamily: taxonomy.occupationFamily,
+            specialization: taxonomy.specialization,
+            limit: 5,
+          });
+          const combined: RetrievedQuestionLike[] = [...existing, ...generated];
+          if (combined.length > 0) {
+            return combined.map((item, index) => this.toMappedInterviewQuestion(item, index));
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`Interview-question retrieval failed, falling back to AI-service questions: ${String(error)}`);
+      }
+    }
+
+    return this.mapInterviewQuestions(result);
+  }
+
+  private buildInterviewQuestionQueryText(result: EvaluationResult): string | null {
+    if (result.skill_gap_summary?.trim()) {
+      return result.skill_gap_summary.trim();
+    }
+    const missingSkills = result.skills.filter((s) => s.type === 'MISSING').map((s) => s.skill_name);
+    return missingSkills.length > 0 ? `Candidate is missing these skills: ${missingSkills.join(', ')}` : null;
+  }
+
+  private toMappedInterviewQuestion(item: RetrievedQuestionLike, index: number): MappedInterviewQuestion {
+    const difficulty =
+      item.experienceBucket === 'EIGHT_PLUS' ? 'HARD' : item.experienceBucket === 'FIVE_TO_EIGHT' ? 'MEDIUM' : 'EASY';
+
+    return {
+      question: item.questionText,
+      category: item.competency,
+      linkedSkill: null,
+      difficulty,
+      rationale: item.rubric.join('; '),
+      displayOrder: index + 1,
+    };
+  }
+
   mapCriteria(result: EvaluationResult): MappedCriterion[] {
     return result.criteria.map((item) => ({
       criterion: item.criterion,
