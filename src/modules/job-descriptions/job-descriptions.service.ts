@@ -4,7 +4,9 @@ import { ParseStatus, Prisma } from '@prisma/client';
 import { CreateJobDescriptionDto } from './dto/create-job-description.dto';
 import { JobDescriptionQueryDto } from './dto/job-description-query.dto';
 import { UpdateJobDescriptionDto } from './dto/update-job-description.dto';
+import { JobDescriptionClassifierService } from './job-description-classifier.service';
 import { JobSkillsService } from './job-skills.service';
+import { INTERVIEW_QUESTION_TAXONOMY } from '../../common/constants/interview-question-taxonomy';
 import { AppException } from '../../common/exceptions/app.exception';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AiService } from '../../integrations/ai/ai.service';
@@ -17,6 +19,7 @@ export class JobDescriptionsService {
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
     private readonly jobSkillsService: JobSkillsService,
+    private readonly classifierService: JobDescriptionClassifierService,
   ) {}
 
   async create(
@@ -117,6 +120,7 @@ export class JobDescriptionsService {
       const parsedData = await this.aiService.parseJobDescription({
         raw_text: jobDescription.rawText,
       });
+      const classification = await this.classifierService.classify(parsedData);
 
       await this.prisma.jobDescription.update({
         where: { id },
@@ -125,6 +129,8 @@ export class JobDescriptionsService {
           parserVersion: JOB_DESCRIPTION_PARSER_VERSION,
           parseStatus: ParseStatus.SUCCESS,
           parsingError: null,
+          occupationFamily: classification?.occupationFamily ?? null,
+          specialization: classification?.specialization ?? null,
         },
       });
 
@@ -176,6 +182,22 @@ export class JobDescriptionsService {
   ) {
     await this.findOne(id, organizationId);
 
+    const { occupationFamily, specialization } = updateJobDescriptionDto;
+    if (occupationFamily || specialization) {
+      if (!occupationFamily || !specialization) {
+        throw new AppException('occupationFamily and specialization must be provided together', 400);
+      }
+      const taxonomyEntry = INTERVIEW_QUESTION_TAXONOMY.find(
+        (entry) => entry.occupationFamily === occupationFamily,
+      );
+      if (!taxonomyEntry?.specializations.includes(specialization)) {
+        throw new AppException(
+          `Unknown specialization "${specialization}" for occupationFamily "${occupationFamily}". Must be exactly one of: ${taxonomyEntry?.specializations.join(', ') ?? ''}`,
+          400,
+        );
+      }
+    }
+
     return this.prisma.jobDescription.update({
       where: { id },
       data: {
@@ -187,6 +209,8 @@ export class JobDescriptionsService {
         seniority: updateJobDescriptionDto.seniority,
         rawText: updateJobDescriptionDto.rawText,
         parserVersion: updateJobDescriptionDto.parserVersion,
+        occupationFamily,
+        specialization,
       },
     });
   }

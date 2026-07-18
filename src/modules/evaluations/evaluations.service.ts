@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { EvaluationStatus, Prisma } from '@prisma/client';
+import { Injectable, Logger } from '@nestjs/common';
+import { EvaluationStatus, OccupationFamily, Prisma } from '@prisma/client';
 
 import { CreateEvaluationDto } from './dto/create-evaluation.dto';
 import { EvaluationQueryDto } from './dto/evaluation-query.dto';
-import { ScoringResultMapperService } from './scoring/scoring.service';
+import { MappedInterviewQuestion, ScoringResultMapperService } from './scoring/scoring.service';
 import { DEFAULT_EVALUATION_CRITERIA } from '../../common/constants/default-evaluation-criteria';
 import { AppException } from '../../common/exceptions/app.exception';
 import {
@@ -14,16 +14,34 @@ import {
 } from '../../common/types/ai-service.types';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AiService } from '../../integrations/ai/ai.service';
+import { InterviewQuestionsService } from '../interview-questions/interview-questions.service';
 
 const APPLICATION_EVENT_EVALUATION_COMPLETED = 'EVALUATION_COMPLETED';
 const APPLICATION_EVENT_EVALUATION_FAILED = 'EVALUATION_FAILED';
 
+interface JobDescriptionTaxonomy {
+  occupationFamily: OccupationFamily | null;
+  specialization: string | null;
+}
+
+// Structural type covering both SearchResultRow and the row returned by
+// InterviewQuestionsService.create() — the two shapes searchOrGenerate() can return.
+interface RetrievedQuestionLike {
+  questionText: string;
+  competency: string;
+  experienceBucket: string;
+  rubric: string[];
+}
+
 @Injectable()
 export class EvaluationsService {
+  private readonly logger = new Logger(EvaluationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
     private readonly scoringMapper: ScoringResultMapperService,
+    private readonly interviewQuestionsService: InterviewQuestionsService,
   ) {}
 
   async create(createEvaluationDto: CreateEvaluationDto, currentUserId: string, organizationId: string) {
@@ -47,6 +65,7 @@ export class EvaluationsService {
       context.resumeData,
       context.jobDescriptionData,
       context.criteria,
+      context.jobDescriptionTaxonomy,
     );
   }
 
@@ -262,6 +281,7 @@ export class EvaluationsService {
       context.resumeData,
       context.jobDescriptionData,
       context.criteria,
+      context.jobDescriptionTaxonomy,
     );
   }
 
@@ -271,6 +291,7 @@ export class EvaluationsService {
     resumeData: ParsedResumeData,
     jobDescriptionData: ParsedJobDescriptionData,
     criteria: ScoreCriterionConfig[],
+    jobDescriptionTaxonomy: JobDescriptionTaxonomy,
   ) {
     try {
       const result = await this.aiService.scoreApplication(
@@ -279,7 +300,7 @@ export class EvaluationsService {
         criteria,
       );
 
-      return this.persistSuccessfulEvaluation(evaluationId, applicationId, result);
+      return this.persistSuccessfulEvaluation(evaluationId, applicationId, result, jobDescriptionTaxonomy);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Evaluation failed';
 
@@ -312,11 +333,65 @@ export class EvaluationsService {
     }
   }
 
+  // Prefers the retrieval-backed question bank when the JD is classified; falls back to the
+  // AI service's rule-based questions otherwise (or if retrieval fails/comes up empty) — this
+  // fallback must never throw, since a broken retrieval path must not fail evaluation creation.
+  private async buildInterviewQuestionRows(
+    taxonomy: JobDescriptionTaxonomy,
+    result: EvaluationResult,
+  ): Promise<MappedInterviewQuestion[]> {
+    if (taxonomy.occupationFamily && taxonomy.specialization) {
+      try {
+        const queryText = this.buildInterviewQuestionQueryText(result);
+        if (queryText) {
+          const { existing, generated } = await this.interviewQuestionsService.searchOrGenerate({
+            queryText,
+            occupationFamily: taxonomy.occupationFamily,
+            specialization: taxonomy.specialization,
+            limit: 5,
+          });
+          const combined: RetrievedQuestionLike[] = [...existing, ...generated];
+          if (combined.length > 0) {
+            return combined.map((item, index) => this.toMappedInterviewQuestion(item, index));
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`Interview-question retrieval failed, falling back to AI-service questions: ${String(error)}`);
+      }
+    }
+
+    return this.scoringMapper.mapInterviewQuestions(result);
+  }
+
+  private buildInterviewQuestionQueryText(result: EvaluationResult): string | null {
+    if (result.skill_gap_summary?.trim()) {
+      return result.skill_gap_summary.trim();
+    }
+    const missingSkills = result.skills.filter((s) => s.type === 'MISSING').map((s) => s.skill_name);
+    return missingSkills.length > 0 ? `Candidate is missing these skills: ${missingSkills.join(', ')}` : null;
+  }
+
+  private toMappedInterviewQuestion(item: RetrievedQuestionLike, index: number): MappedInterviewQuestion {
+    const difficulty =
+      item.experienceBucket === 'EIGHT_PLUS' ? 'HARD' : item.experienceBucket === 'FIVE_TO_EIGHT' ? 'MEDIUM' : 'EASY';
+
+    return {
+      question: item.questionText,
+      category: item.competency,
+      linkedSkill: null,
+      difficulty,
+      rationale: item.rubric.join('; '),
+      displayOrder: index + 1,
+    };
+  }
+
   private async persistSuccessfulEvaluation(
     evaluationId: string,
     applicationId: string,
     result: EvaluationResult,
+    jobDescriptionTaxonomy: JobDescriptionTaxonomy,
   ) {
+    const interviewQuestionRows = await this.buildInterviewQuestionRows(jobDescriptionTaxonomy, result);
     const mappedCriteria = this.scoringMapper.mapCriteria(result);
     const criterionRows = mappedCriteria.map((item) => ({
       evaluationId,
@@ -348,11 +423,9 @@ export class EvaluationsService {
         });
       }
 
-      if (result.interview_questions.length > 0) {
-        const mappedQuestions = this.scoringMapper.mapInterviewQuestions(result);
-
+      if (interviewQuestionRows.length > 0) {
         await tx.evaluationInterviewQuestion.createMany({
-          data: mappedQuestions.map((item) => ({
+          data: interviewQuestionRows.map((item) => ({
             evaluationId,
             question: item.question,
             category: item.category,
@@ -454,6 +527,10 @@ export class EvaluationsService {
       resumeData: application.resume.parsedData as unknown as ParsedResumeData,
       jobDescriptionData: application.jobDescription
         .parsedData as unknown as ParsedJobDescriptionData,
+      jobDescriptionTaxonomy: {
+        occupationFamily: application.jobDescription.occupationFamily,
+        specialization: application.jobDescription.specialization,
+      },
     };
   }
 
