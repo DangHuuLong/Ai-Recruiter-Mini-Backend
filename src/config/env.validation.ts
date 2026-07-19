@@ -48,6 +48,9 @@ export const envValidationSchema = Joi.object({
   PUBLIC_RATE_LIMIT_MAX_BATCHES_PER_HOUR: Joi.number().integer().positive().default(5),
   SUPABASE_PUBLIC_TEMP_BUCKET: Joi.string().default('file-public'),
 
+  ENTERPRISE_RATE_LIMIT_MAX_BATCHES_PER_HOUR: Joi.number().integer().positive().default(20),
+  ENTERPRISE_RATE_LIMIT_MAX_QUESTION_SEARCHES_PER_HOUR: Joi.number().integer().positive().default(100),
+
   GEMINI_API_KEY_1: Joi.string().optional(),
   GEMINI_API_KEY_2: Joi.string().optional(),
   GEMINI_API_KEY_3: Joi.string().optional(),

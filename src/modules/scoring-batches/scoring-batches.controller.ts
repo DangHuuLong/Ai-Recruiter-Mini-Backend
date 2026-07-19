@@ -10,7 +10,9 @@ import { SkillGapQueryDto } from './dto/skill-gap-query.dto';
 import { ScoringBatchPromoteService } from './scoring-batch-promote.service';
 import { ScoringBatchesService } from './scoring-batches.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { EnterpriseRateLimitGuard } from '../../common/guards/enterprise-rate-limit.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import type { AuthUser } from '../../common/types/auth-user.type';
@@ -42,6 +44,12 @@ export class ScoringBatchesController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  @UseGuards(EnterpriseRateLimitGuard)
+  @RateLimit({
+    action: 'scoring-batches',
+    envVar: 'ENTERPRISE_RATE_LIMIT_MAX_BATCHES_PER_HOUR',
+    defaultMax: 20,
+  })
   @HttpCode(202)
   async create(@Body() dto: CreateScoringBatchDto, @CurrentUser() currentUser: AuthUser) {
     const data = await this.scoringBatchesService.create(
