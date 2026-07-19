@@ -8,6 +8,7 @@ import { CreatePublicBatchDto } from './dto/create-public-batch.dto';
 import { RedisBatchContextStore } from './redis-batch-context.store';
 import { AppException } from '../../common/exceptions/app.exception';
 import { DEFAULT_MAX_FILE_SIZE_MB } from '../../common/constants/upload.constants';
+import { computeSha256Hex } from '../../common/utils/checksum.util';
 import {
   getUploadFileExtension,
   isAllowedUploadMimeType,
@@ -312,6 +313,15 @@ export class PublicBatchesService {
 
     if (!exists) {
       throw new AppException(`Uploaded file not found: ${ref.fileKey}`, 400);
+    }
+
+    if (ref.checksum) {
+      const buffer = await this.storageService.downloadFile(ref.fileKey, bucket);
+      const actualChecksum = computeSha256Hex(buffer);
+
+      if (actualChecksum.toLowerCase() !== ref.checksum.toLowerCase()) {
+        throw new AppException(`Checksum mismatch for uploaded file: ${ref.fileKey}`, 400);
+      }
     }
 
     try {
