@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { UserQueryDto } from './dto/user-query.dto';
 import { AppException } from '../../common/exceptions/app.exception';
 import { hashPassword } from '../../common/utils/password.util';
@@ -71,6 +72,41 @@ export class UsersService {
       data: users,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  async update(id: string, dto: UpdateUserDto, organizationId: string, currentUserId: string) {
+    const target = await this.prisma.user.findFirst({
+      where: { id, organizationId },
+      select: { id: true, role: true },
+    });
+
+    if (!target) {
+      throw new AppException('User not found', 404);
+    }
+
+    if (id === currentUserId && (dto.role !== undefined || dto.isActive === false)) {
+      throw new AppException('Cannot change your own role or deactivate your own account', 400);
+    }
+
+    const removesAnAdmin =
+      target.role === UserRole.ADMIN &&
+      ((dto.role !== undefined && dto.role !== UserRole.ADMIN) || dto.isActive === false);
+
+    if (removesAnAdmin) {
+      const otherActiveAdmins = await this.prisma.user.count({
+        where: { organizationId, role: UserRole.ADMIN, isActive: true, id: { not: id } },
+      });
+
+      if (otherActiveAdmins === 0) {
+        throw new AppException('Cannot remove the last active admin of the organization', 409);
+      }
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: dto,
+      select: this.getUserSelect(),
+    });
   }
 
   async findActiveByEmail(email: string) {
