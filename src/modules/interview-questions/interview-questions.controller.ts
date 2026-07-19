@@ -7,7 +7,9 @@ import { InterviewQuestionQueryDto } from './dto/interview-question-query.dto';
 import { SearchInterviewQuestionsDto } from './dto/search-interview-questions.dto';
 import { UpdateInterviewQuestionDto } from './dto/update-interview-question.dto';
 import { InterviewQuestionsService } from './interview-questions.service';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { EnterpriseRateLimitGuard } from '../../common/guards/enterprise-rate-limit.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
@@ -48,10 +50,14 @@ export class InterviewQuestionsController {
     };
   }
 
-  // Side-effecting counterpart to /search — kept as a separate endpoint so
-  // /search stays a cheap, pure read. May call an LLM and write new
-  // PENDING_REVIEW rows if the bucket is thin or off-topic for this query.
+  // Side-effecting counterpart to /search — may call an LLM and write new PENDING_REVIEW rows.
   @Post('search-or-generate')
+  @UseGuards(EnterpriseRateLimitGuard)
+  @RateLimit({
+    action: 'interview-question-search',
+    envVar: 'ENTERPRISE_RATE_LIMIT_MAX_QUESTION_SEARCHES_PER_HOUR',
+    defaultMax: 100,
+  })
   async searchOrGenerate(@Body() searchDto: SearchInterviewQuestionsDto) {
     const result = await this.interviewQuestionsService.searchOrGenerate(searchDto);
 
