@@ -13,6 +13,7 @@ import { mapStructuredJdToParsedData } from './job-description-structured.mapper
 import { mapStructuredResumeToParsedData } from './resume-structured.mapper';
 import { AppException } from '../../common/exceptions/app.exception';
 import { DEFAULT_MAX_FILE_SIZE_MB } from '../../common/constants/upload.constants';
+import { computeSha256Hex } from '../../common/utils/checksum.util';
 import {
   getUploadFileExtension,
   isAllowedUploadMimeType,
@@ -80,6 +81,20 @@ export class ScoringBatchesService {
     );
   }
 
+  // Client declares the checksum when requesting the upload URL, before the
+  // file exists in storage — nothing stopped it from lying, since the client
+  // uploads directly to Supabase and the bytes never pass through this
+  // service. Re-download and re-hash once, right before trusting it (e.g.
+  // for checksum-cache lookups), rather than persisting an unverified claim.
+  private async verifyChecksum(fileKey: string, bucket: string, declaredChecksum: string) {
+    const buffer = await this.storageService.downloadFile(fileKey, bucket);
+    const actualChecksum = computeSha256Hex(buffer);
+
+    if (actualChecksum.toLowerCase() !== declaredChecksum.toLowerCase()) {
+      throw new AppException(`Checksum mismatch for uploaded file: ${fileKey}`, 400);
+    }
+  }
+
   async create(dto: CreateScoringBatchDto, organizationId: string, userId: string) {
     const resumeFiles = dto.resumeFiles ?? [];
     const resumeTexts = dto.resumeTexts ?? [];
@@ -129,6 +144,10 @@ export class ScoringBatchesService {
 
       if (!exists) {
         throw new AppException(`Uploaded file not found: ${ref.fileKey}`, 400);
+      }
+
+      if (ref.checksum) {
+        await this.verifyChecksum(ref.fileKey, bucket, ref.checksum);
       }
 
       let fileType;
