@@ -235,7 +235,7 @@ model Candidate {
 }
 
 model Resume {
-  id          String @id @default(cuid())
+  id          String  @id @default(cuid())
   candidateId String
   // Nullable — a resume promoted from a text/structured ScoringBatchResume
   // (Phase 5) has no backing file at all.
@@ -251,9 +251,10 @@ model Resume {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  candidate    Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  fileAsset    FileAsset?    @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
-  applications Application[]
+  candidate         Candidate            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  fileAsset         FileAsset?           @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  applications      Application[]
+  scoringBatchItems ScoringBatchResume[]
 
   @@index([candidateId])
   @@index([fileAssetId])
@@ -265,30 +266,30 @@ model Resume {
 // ─────────────────────────────────────────────
 
 model JobDescription {
-  id             String      @id @default(cuid())
-  organizationId String
-  createdById    String?
-  title          String
-  companyName    String?
-  department     String?
-  location       String?
-  employmentType String?
-  seniority      String?
+  id               String            @id @default(cuid())
+  organizationId   String
+  createdById      String?
+  title            String
+  companyName      String?
+  department       String?
+  location         String?
+  employmentType   String?
+  seniority        String?
   // Nullable — a JD promoted from a file/structured ScoringBatchJobDescription
   // (Phase 5) has no pasted raw text at all.
-  rawText        String?
+  rawText          String?
   // Structured JSON extracted from JD.
   // Shape: { responsibilities[], requirements[], niceToHave[], minExperienceYears, educationRequirement, domainKeywords[] }
-  parsedData     Json?
-  parserVersion  String?
-  parseStatus    ParseStatus @default(PENDING)
-  parsingError   String?
+  parsedData       Json?
+  parserVersion    String?
+  parseStatus      ParseStatus       @default(PENDING)
+  parsingError     String?
   // Set by JobDescriptionClassifierService after parse() — null if outside the covered taxonomy.
   occupationFamily OccupationFamily?
   specialization   String?
-  isActive       Boolean     @default(true)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   organization      Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy         User?                        @relation("JobDescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -596,12 +597,16 @@ model ScoringBatchResume {
   parsedData     Json?
   parsingError   String?
   candidateId    String?
+  // Set once, on first promote() call — lets a repeat promote of the same
+  // item reuse this Resume instead of creating a duplicate.
+  resumeId       String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
   batch     ScoringBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
   fileAsset FileAsset?           @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
   candidate Candidate?           @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  resume    Resume?              @relation(fields: [resumeId], references: [id], onDelete: SetNull)
   results   ScoringBatchResult[]
 
   @@unique([batchId, fileAssetId])
@@ -616,20 +621,20 @@ model ScoringBatchResume {
 // time: a file-based JD (AI service /parse/job-description signed_url path)
 // has no rawText until parsing completes; a text-pasted JD has no file.
 model ScoringBatchJobDescription {
-  id               String      @id @default(cuid())
+  id               String            @id @default(cuid())
   batchId          String
   label            String?
   fileAssetId      String?
   rawText          String?
-  status           ParseStatus @default(PENDING)
+  status           ParseStatus       @default(PENDING)
   parsedData       Json?
   parsingError     String?
   jobDescriptionId String?
   // Set by JobDescriptionClassifierService right after parsedData succeeds — null if outside the covered taxonomy.
   occupationFamily OccupationFamily?
   specialization   String?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   batch          ScoringBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
   fileAsset      FileAsset?           @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
@@ -754,25 +759,25 @@ enum QuestionQualityGateStatus {
 }
 
 model InterviewQuestionEntry {
-  id               String @id @default(cuid())
-  questionText     String
+  id           String @id @default(cuid())
+  questionText String
 
   occupationFamily OccupationFamily
   specialization   String
   enablers         String[]
   businessContext  String
 
-  competency       String
-  competencyType   CompetencyType
+  competency     String
+  competencyType CompetencyType
 
   assessmentTarget AssessmentTarget
 
   experienceBucket ExperienceBucket
   autonomyLevel    AutonomyLevel
 
-  questionType     InterviewQuestionType
+  questionType InterviewQuestionType
 
-  rubric           String[]
+  rubric String[]
 
   // pgvector column — Prisma has no native vector type, so raw SQL
   // ($queryRaw/$executeRaw) is required for embedding writes and
