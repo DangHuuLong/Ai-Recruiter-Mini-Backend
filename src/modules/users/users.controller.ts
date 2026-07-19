@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { CreateUserDto } from './dto/create-user.dto';
@@ -6,10 +6,12 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UserQueryDto } from './dto/user-query.dto';
 import { UsersService } from './users.service';
 import { AuthTokenService } from '../auth/auth-token.service';
+import { AuditLog } from '../../common/decorators/audit-log.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { AuditLogInterceptor } from '../../common/interceptors/audit-log.interceptor';
 import type { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller('users')
@@ -54,6 +56,8 @@ export class UsersController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN)
+  @UseInterceptors(AuditLogInterceptor)
+  @AuditLog({ action: 'UPDATE', resourceType: 'User' })
   async update(
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,

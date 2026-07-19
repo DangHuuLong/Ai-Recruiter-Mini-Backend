@@ -18,6 +18,7 @@ import { LlmProvidersModule } from './integrations/llm-providers/llm-providers.m
 import { RedisModule } from './integrations/redis/redis.module';
 import { StorageModule } from './integrations/storage/storage.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthTokenModule } from './modules/auth/auth-token.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
@@ -72,6 +73,7 @@ import { QueueModule } from './queue/queue.module';
     QueueModule,
     ScoringBatchesModule,
     PublicBatchesModule,
+    AuditLogsModule,
   ],
 })
 export class AppModule implements NestModule {
