@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, ScoringBatchJobDescription, ScoringBatchResult } from '@prisma/client';
+import { Prisma, ScoringBatchJobDescription, ScoringBatchResult, ScoringBatchResume } from '@prisma/client';
 
 import { PromoteBatchDto, PromoteItemDto } from './dto/promote-batch.dto';
 import { AppException } from '../../common/exceptions/app.exception';
@@ -89,21 +89,19 @@ export class ScoringBatchPromoteService {
       resumeItem.candidateLabel,
     );
 
-    const resume = await this.prisma.resume.create({
-      data: {
-        candidateId,
-        fileAssetId: resumeItem.fileAssetId,
-        rawText: resumeItem.rawText,
-        parsedData: resumeItem.parsedData as Prisma.InputJsonValue,
-        parseStatus: 'SUCCESS',
-        parserVersion: PROMOTED_PARSER_VERSION,
-      },
-    });
+    const resume = await this.findOrCreateResume(resumeItem, candidateId);
 
+    const scoringBatchResumePatch: Prisma.ScoringBatchResumeUncheckedUpdateInput = {};
     if (!resumeItem.candidateId) {
+      scoringBatchResumePatch.candidateId = candidateId;
+    }
+    if (!resumeItem.resumeId) {
+      scoringBatchResumePatch.resumeId = resume.id;
+    }
+    if (Object.keys(scoringBatchResumePatch).length > 0) {
       await this.prisma.scoringBatchResume.update({
         where: { id: resumeItem.id },
-        data: { candidateId },
+        data: scoringBatchResumePatch,
       });
     }
 
@@ -210,6 +208,32 @@ export class ScoringBatchPromoteService {
     });
 
     return candidate.id;
+  }
+
+  // Mirrors the jobDescriptionId reuse below — repeat promote() calls for the
+  // same resumeItem must not create a new Resume each time. If resumeId was
+  // set on a prior promote but the Resume itself has since been deleted
+  // independently (e.g. via a candidate delete cascade), fall through and
+  // recreate rather than erroring.
+  private async findOrCreateResume(resumeItem: ScoringBatchResume, candidateId: string) {
+    if (resumeItem.resumeId) {
+      const existing = await this.prisma.resume.findUnique({ where: { id: resumeItem.resumeId } });
+
+      if (existing) {
+        return existing;
+      }
+    }
+
+    return this.prisma.resume.create({
+      data: {
+        candidateId,
+        fileAssetId: resumeItem.fileAssetId,
+        rawText: resumeItem.rawText,
+        parsedData: resumeItem.parsedData as Prisma.InputJsonValue,
+        parseStatus: 'SUCCESS',
+        parserVersion: PROMOTED_PARSER_VERSION,
+      },
+    });
   }
 
   private async createJobDescription(
