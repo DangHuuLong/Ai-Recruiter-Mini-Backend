@@ -51,6 +51,9 @@ export const envValidationSchema = Joi.object({
   ENTERPRISE_RATE_LIMIT_MAX_BATCHES_PER_HOUR: Joi.number().integer().positive().default(20),
   ENTERPRISE_RATE_LIMIT_MAX_QUESTION_SEARCHES_PER_HOUR: Joi.number().integer().positive().default(100),
 
+  AUTH_RATE_LIMIT_MAX_RESEND_VERIFICATION_PER_HOUR: Joi.number().integer().positive().default(3),
+  AUTH_RATE_LIMIT_MAX_FORGOT_PASSWORD_PER_HOUR: Joi.number().integer().positive().default(3),
+
   GEMINI_API_KEY_1: Joi.string().optional(),
   GEMINI_API_KEY_2: Joi.string().optional(),
   GEMINI_API_KEY_3: Joi.string().optional(),
