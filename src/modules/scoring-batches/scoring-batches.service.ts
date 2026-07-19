@@ -81,11 +81,7 @@ export class ScoringBatchesService {
     );
   }
 
-  // Client declares the checksum when requesting the upload URL, before the
-  // file exists in storage — nothing stopped it from lying, since the client
-  // uploads directly to Supabase and the bytes never pass through this
-  // service. Re-download and re-hash once, right before trusting it (e.g.
-  // for checksum-cache lookups), rather than persisting an unverified claim.
+  // Client declares the checksum before uploading, so it can't be trusted as-is.
   private async verifyChecksum(fileKey: string, bucket: string, declaredChecksum: string) {
     const buffer = await this.storageService.downloadFile(fileKey, bucket);
     const actualChecksum = computeSha256Hex(buffer);
