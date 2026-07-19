@@ -40,6 +40,12 @@ export class FilesController {
     return this.filesService.findOne(id, currentUser.organizationId);
   }
 
+  @Get(':id/download-url')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
+  getDownloadUrl(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
+    return this.filesService.getDownloadUrl(id, currentUser.organizationId);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   remove(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {

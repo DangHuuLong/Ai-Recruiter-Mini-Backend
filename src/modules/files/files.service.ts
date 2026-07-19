@@ -17,6 +17,8 @@ import {
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { SupabaseStorageService } from '../../integrations/storage/supabase-storage.service';
 
+const DOWNLOAD_URL_EXPIRES_IN_SECONDS = 600;
+
 @Injectable()
 export class FilesService {
   private readonly maxFileSizeBytes: number;
@@ -95,6 +97,17 @@ export class FilesService {
     }
 
     return fileAsset;
+  }
+
+  async getDownloadUrl(id: string, organizationId: string) {
+    const fileAsset = await this.findOne(id, organizationId);
+    const url = await this.storageService.createSignedUrl(
+      fileAsset.storageKey,
+      DOWNLOAD_URL_EXPIRES_IN_SECONDS,
+      fileAsset.bucket,
+    );
+
+    return { url, expiresIn: DOWNLOAD_URL_EXPIRES_IN_SECONDS };
   }
 
   async remove(id: string, organizationId: string) {
