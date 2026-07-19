@@ -12,11 +12,7 @@ type RequestWithEmailBody = {
   body?: { email?: string };
 };
 
-// Unauthenticated auth-flow endpoints (resend-verification, forgot-password)
-// have no request.user/organizationId to key on — key by the target email
-// instead, so a single victim address can't be email-bombed regardless of
-// how many IPs the caller rotates through. Reuses @RateLimit() metadata,
-// same opt-in-per-route shape as EnterpriseRateLimitGuard/PublicRateLimitGuard.
+// No request.user here (unauthenticated route) — key by target email instead of org/IP.
 @Injectable()
 export class EmailRateLimitGuard implements CanActivate {
   constructor(

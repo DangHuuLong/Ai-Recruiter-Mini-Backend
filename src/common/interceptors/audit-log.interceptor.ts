@@ -14,10 +14,8 @@ type RequestWithAuditContext = {
   body?: unknown;
 };
 
-// Opt-in per route via @AuditLog() — mirrors RateLimit/EnterpriseRateLimitGuard.
-// Runs as a method-level interceptor, so it sees the raw controller return
-// value ({message, data}) — TransformResponseInterceptor wraps it afterward
-// since it's registered globally via app.useGlobalInterceptors() in main.ts.
+// Opt-in per route via @AuditLog() — sees the raw {message, data} return value,
+// since TransformResponseInterceptor (which wraps it) is registered globally.
 @Injectable()
 export class AuditLogInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditLogInterceptor.name);
