@@ -21,6 +21,7 @@ import { ApplicationsModule } from './modules/applications/applications.module';
 import { AuthTokenModule } from './modules/auth/auth-token.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
+import { EvaluationConfigsModule } from './modules/evaluation-configs/evaluation-configs.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
@@ -65,6 +66,7 @@ import { QueueModule } from './queue/queue.module';
     JobDescriptionsModule,
     ApplicationsModule,
     InterviewQuestionsModule,
+    EvaluationConfigsModule,
     EvaluationsModule,
     BatchStoreModule,
     QueueModule,
