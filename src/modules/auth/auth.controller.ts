@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -7,6 +7,8 @@ import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
+import { EmailRateLimitGuard } from '../../common/guards/email-rate-limit.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -43,6 +45,12 @@ export class AuthController {
   }
 
   @Post('resend-verification')
+  @UseGuards(EmailRateLimitGuard)
+  @RateLimit({
+    action: 'resend-verification',
+    envVar: 'AUTH_RATE_LIMIT_MAX_RESEND_VERIFICATION_PER_HOUR',
+    defaultMax: 3,
+  })
   async resendVerification(@Body() dto: ResendVerificationDto) {
     const result = await this.authService.resendVerification(dto);
 
@@ -50,6 +58,12 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @UseGuards(EmailRateLimitGuard)
+  @RateLimit({
+    action: 'forgot-password',
+    envVar: 'AUTH_RATE_LIMIT_MAX_FORGOT_PASSWORD_PER_HOUR',
+    defaultMax: 3,
+  })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     const result = await this.authService.forgotPassword(dto);
 
