@@ -1,14 +1,27 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { CreateJobDescriptionDto } from './dto/create-job-description.dto';
 import { JobDescriptionQueryDto } from './dto/job-description-query.dto';
 import { UpdateJobDescriptionDto } from './dto/update-job-description.dto';
 import { JobDescriptionsService } from './job-descriptions.service';
+import { AuditLog } from '../../common/decorators/audit-log.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { AuditLogInterceptor } from '../../common/interceptors/audit-log.interceptor';
 import type { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller('job-descriptions')
@@ -109,6 +122,8 @@ export class JobDescriptionsController {
 
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  @UseInterceptors(AuditLogInterceptor)
+  @AuditLog({ action: 'DEACTIVATE', resourceType: 'JobDescription' })
   async remove(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
     const jobDescription = await this.jobDescriptionsService.deactivate(
       id,

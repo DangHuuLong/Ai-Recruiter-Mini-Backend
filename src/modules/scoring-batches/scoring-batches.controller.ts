@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type { Response } from 'express';
 
@@ -9,12 +20,14 @@ import { PromoteBatchDto } from './dto/promote-batch.dto';
 import { SkillGapQueryDto } from './dto/skill-gap-query.dto';
 import { ScoringBatchPromoteService } from './scoring-batch-promote.service';
 import { ScoringBatchesService } from './scoring-batches.service';
+import { AuditLog } from '../../common/decorators/audit-log.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { EnterpriseRateLimitGuard } from '../../common/guards/enterprise-rate-limit.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { AuditLogInterceptor } from '../../common/interceptors/audit-log.interceptor';
 import type { AuthUser } from '../../common/types/auth-user.type';
 
 @Controller('scoring-batches')
@@ -134,6 +147,8 @@ export class ScoringBatchesController {
 
   @Post(':id/cancel')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  @UseInterceptors(AuditLogInterceptor)
+  @AuditLog({ action: 'CANCEL', resourceType: 'ScoringBatch' })
   async cancel(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
     const data = await this.scoringBatchesService.cancel(id, currentUser.organizationId);
 
@@ -142,6 +157,8 @@ export class ScoringBatchesController {
 
   @Post(':id/promote')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  @UseInterceptors(AuditLogInterceptor)
+  @AuditLog({ action: 'PROMOTE', resourceType: 'ScoringBatch' })
   async promote(
     @Param('id') id: string,
     @Body() dto: PromoteBatchDto,
