@@ -1,3 +1,4 @@
+// Body for POST /auth/register-organization — creates a new organization and its first admin user.
 import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterOrganizationDto {
