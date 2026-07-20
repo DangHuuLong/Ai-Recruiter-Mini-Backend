@@ -1,3 +1,4 @@
+// Turns a scored ScoringBatch cell into durable Candidate/Resume/JobDescription/Application/Evaluation records, written directly against Prisma since the data is already parsed and scored.
 import { Injectable } from '@nestjs/common';
 import { Prisma, ScoringBatchJobDescription, ScoringBatchResult, ScoringBatchResume } from '@prisma/client';
 
@@ -25,13 +26,6 @@ export interface PromoteItemResult {
   evaluationId?: string;
 }
 
-/**
- * Turns a scored batch cell into the durable Candidate/Resume/JobDescription/
- * Application/Evaluation records. Written directly against Prisma rather
- * than reusing ResumesService.create()/EvaluationsService.create() — both
- * assume "call the AI service now", but a promoted item already has parsed
- * data and a finished score, so nothing needs to be parsed or scored again.
- */
 @Injectable()
 export class ScoringBatchPromoteService {
   constructor(
@@ -40,6 +34,7 @@ export class ScoringBatchPromoteService {
     private readonly jobSkillsService: JobSkillsService,
   ) {}
 
+  // Called by ScoringBatchesController's promote endpoint — turns selected scored cells into real Candidate/Application/Evaluation rows.
   async promote(
     batchId: string,
     dto: PromoteBatchDto,
@@ -64,6 +59,7 @@ export class ScoringBatchPromoteService {
     return results;
   }
 
+  // Called by promote() for each item in the batch — promotes one resume (and optionally its paired JD/score) to durable records.
   private async promoteOne(
     batchId: string,
     item: PromoteItemDto,
@@ -175,6 +171,7 @@ export class ScoringBatchPromoteService {
     };
   }
 
+  // Called from promoteOne() — matches an existing Candidate by email or creates one from the parsed resume's personal info.
   private async findOrCreateCandidate(
     organizationId: string,
     parsedResume: ParsedResumeData,
@@ -210,11 +207,7 @@ export class ScoringBatchPromoteService {
     return candidate.id;
   }
 
-  // Mirrors the jobDescriptionId reuse below — repeat promote() calls for the
-  // same resumeItem must not create a new Resume each time. If resumeId was
-  // set on a prior promote but the Resume itself has since been deleted
-  // independently (e.g. via a candidate delete cascade), fall through and
-  // recreate rather than erroring.
+  // Reused on repeat promote() calls for the same resumeItem, via ScoringBatchResume.resumeId — avoids duplicate Resumes.
   private async findOrCreateResume(resumeItem: ScoringBatchResume, candidateId: string) {
     if (resumeItem.resumeId) {
       const existing = await this.prisma.resume.findUnique({ where: { id: resumeItem.resumeId } });
@@ -236,6 +229,7 @@ export class ScoringBatchPromoteService {
     });
   }
 
+  // Called from promoteOne() when a JD item has no linked JobDescription yet — creates one and syncs its skills via JobSkillsService.
   private async createJobDescription(
     organizationId: string,
     userId: string,
@@ -264,6 +258,7 @@ export class ScoringBatchPromoteService {
     return jobDescription.id;
   }
 
+  // Called from promoteOne() — reuses an existing Application for this candidate/JD/resume combo or creates a new one.
   private async findOrCreateApplication(
     organizationId: string,
     userId: string,
@@ -291,6 +286,7 @@ export class ScoringBatchPromoteService {
     });
   }
 
+  // Called from promoteOne() for a completed cell — writes an Evaluation plus its criteria/skills/interview questions in one transaction.
   private async createEvaluationFromCell(
     organizationId: string,
     userId: string,
