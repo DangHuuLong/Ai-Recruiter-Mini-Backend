@@ -1,7 +1,8 @@
+// Maps the camelCase structured-form DTO to the AI service's snake_case ParsedResumeData shape.
 import { ResumeStructuredInputDto } from './dto/resume-structured-input.dto';
 import { ParsedResumeData } from '../../common/types/ai-service.types';
 
-/** Maps the camelCase structured-form DTO to the AI service's snake_case ParsedResumeData shape. */
+// Called by ScoringBatchesService.create for resumeStructured inputs — skips AI parsing and seeds parsedData directly.
 export function mapStructuredResumeToParsedData(input: ResumeStructuredInputDto): ParsedResumeData {
   return {
     personal: {
