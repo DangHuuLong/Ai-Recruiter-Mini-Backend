@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
+import { BulkDeleteEvaluationConfigsDto } from './dto/bulk-delete-evaluation-configs.dto';
 import { CreateEvaluationConfigDto } from './dto/create-evaluation-config.dto';
 import { EvaluationConfigQueryDto } from './dto/evaluation-config-query.dto';
 import { UpdateEvaluationConfigDto } from './dto/update-evaluation-config.dto';
@@ -43,6 +44,20 @@ export class EvaluationConfigsController {
     return {
       message: 'Evaluation config created successfully',
       data: config,
+    };
+  }
+
+  // POST /evaluation-configs/bulk-delete — deletes multiple configs, reporting per-id success/failure.
+  @Post('bulk-delete')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  @UseInterceptors(AuditLogInterceptor)
+  @AuditLog({ action: 'BULK_DELETE', resourceType: 'EvaluationConfig' })
+  async removeBulk(@Body() dto: BulkDeleteEvaluationConfigsDto, @CurrentUser() currentUser: AuthUser) {
+    const results = await this.evaluationConfigsService.removeMany(dto.ids, currentUser.organizationId);
+
+    return {
+      message: 'Bulk evaluation config deletion completed',
+      data: results,
     };
   }
 
