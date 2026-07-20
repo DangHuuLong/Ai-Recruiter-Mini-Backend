@@ -1,3 +1,4 @@
+// Body for requesting pre-signed upload URLs for a batch of files.
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, ValidateNested } from 'class-validator';
 
