@@ -1,3 +1,4 @@
+// BullMQ processor: scores one resume/job-description pair via the AI service and stores the result.
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { HttpException, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
@@ -11,10 +12,6 @@ import { AiService } from '../../integrations/ai/ai.service';
 const RETRYABLE_STATUS_CODES = new Set([502, 504]);
 
 @Processor(QUEUE_NAMES.SCORE_PAIR, {
-  // Deliberately low default — this is the CrossEncoder bottleneck queue on
-  // the AI service side (no cacheable embeddings, one full forward pass per
-  // pair). Raising this only saturates the AI service faster, it does not
-  // speed up throughput. See PLAN.md Phase 2 for the full rationale.
   concurrency: process.env.AI_SCORE_CONCURRENCY ? Number(process.env.AI_SCORE_CONCURRENCY) : 4,
 })
 export class ScorePairProcessor extends WorkerHost {
@@ -28,6 +25,7 @@ export class ScorePairProcessor extends WorkerHost {
     super();
   }
 
+  // BullMQ handler for the score-pair queue, enqueued by BatchProgressCoordinatorService.startScoringStage once parsing completes.
   async process(job: Job<ScorePairJobData>): Promise<void> {
     const { batchId, tier, resumeItemId, jdItemId, criteria } = job.data;
     const store = this.storeFactory.forTier(tier);
@@ -44,8 +42,6 @@ export class ScorePairProcessor extends WorkerHost {
       ]);
 
       if (!resumeData || !jdData) {
-        // Should not happen — the coordinator only enqueues score-pair jobs
-        // for items that finished parsing successfully — but guard anyway.
         await store.upsertResult(batchId, resumeItemId, jdItemId, {
           status: 'FAILED',
           error: 'Missing parsed resume or job description data',
