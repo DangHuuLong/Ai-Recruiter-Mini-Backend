@@ -1,3 +1,4 @@
+// Module wiring for the auth feature (controller + service, depends on UsersModule).
 import { Module } from '@nestjs/common';
 
 import { AuthController } from './auth.controller';
