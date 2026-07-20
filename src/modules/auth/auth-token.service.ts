@@ -1,3 +1,4 @@
+// Service for issuing and consuming email-verification and password-reset tokens.
 import { Injectable } from '@nestjs/common';
 import { AuthTokenType } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +19,7 @@ export class AuthTokenService {
     private readonly configService: ConfigService,
   ) {}
 
+  // Called by AuthService.registerOrganization()/resendVerification() — creates and emails a fresh verification link.
   async issueEmailVerificationToken(
     userId: string,
     email: string,
@@ -32,6 +34,7 @@ export class AuthTokenService {
     await this.emailService.send(email, message);
   }
 
+  // Called by AuthService.forgotPassword() — creates and emails a password reset link.
   async issuePasswordResetToken(
     userId: string,
     email: string,
@@ -45,7 +48,7 @@ export class AuthTokenService {
     await this.emailService.send(email, message);
   }
 
-  /** Validates and consumes a token, returning the associated userId or null if invalid/expired/used. */
+  // Called by AuthService.verifyEmail()/resetPassword() — validates and one-time-marks a token, returning its owning user id.
   async consumeToken(rawToken: string, type: AuthTokenType): Promise<string | null> {
     const tokenHash = hashToken(rawToken);
 
@@ -65,6 +68,7 @@ export class AuthTokenService {
     return token.userId;
   }
 
+  // Called by issueEmailVerificationToken()/issuePasswordResetToken() — invalidates prior unused tokens and persists a new hashed one.
   private async createToken(
     userId: string,
     type: AuthTokenType,
