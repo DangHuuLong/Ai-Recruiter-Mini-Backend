@@ -1,3 +1,4 @@
+// Body for POST /interview-questions — full field set for manually authoring an InterviewQuestionEntry.
 import {
   AssessmentTarget,
   AutonomyLevel,
@@ -65,10 +66,6 @@ export class CreateInterviewQuestionDto {
   @IsEnum(InterviewQuestionSource)
   source?: InterviewQuestionSource;
 
-  // Only reachable by the DEV role — a human has already reviewed the
-  // content by typing it in, so this defaults to APPROVED in the service
-  // (unlike the future AI-fallback write-back path, which must start at
-  // PENDING_REVIEW). Exposed here only so DEV can override if needed.
   @IsOptional()
   @IsEnum(QuestionQualityGateStatus)
   qualityGateStatus?: QuestionQualityGateStatus;
