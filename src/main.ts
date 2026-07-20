@@ -1,3 +1,4 @@
+// App entrypoint: bootstraps Nest, global pipes/filters/interceptors, Swagger docs, and Bull Board.
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -8,6 +9,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor';
 import { setupBullBoard } from './queue/bull-board.setup';
 
+// Entry point invoked at the bottom of this file; boots the whole app (Nest, Swagger, Bull Board) when the process starts.
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
