@@ -1,3 +1,4 @@
+// Service for evaluations — scores an application via AiService, persists criteria/skills/interview questions, and supports retry.
 import { Injectable } from '@nestjs/common';
 import { EvaluationStatus, Prisma } from '@prisma/client';
 
@@ -26,6 +27,7 @@ export class EvaluationsService {
     private readonly scoringMapper: ScoringResultMapperService,
   ) {}
 
+  // Called by EvaluationsController.create() — resolves scoring inputs, marks the evaluation PROCESSING, then scores it.
   async create(createEvaluationDto: CreateEvaluationDto, currentUserId: string, organizationId: string) {
     const context = await this.buildScoringContext(createEvaluationDto, organizationId);
 
@@ -51,6 +53,7 @@ export class EvaluationsService {
     );
   }
 
+  // Called by EvaluationsController.findAll() — builds filters/search and returns a paginated evaluation list.
   async findAll(query: EvaluationQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
@@ -129,6 +132,7 @@ export class EvaluationsService {
     };
   }
 
+  // Called by EvaluationsController.findOne() — fetches an evaluation with full related data, 404s if missing.
   async findOne(id: string, organizationId: string) {
     const evaluation = await this.prisma.evaluation.findFirst({
       where: { id, organizationId },
@@ -142,6 +146,7 @@ export class EvaluationsService {
     return evaluation;
   }
 
+  // Called by EvaluationsController.findByApplicationId() — lists evaluations run for one application.
   async findByApplicationId(applicationId: string, organizationId: string) {
     await this.ensureApplicationExists(applicationId, organizationId);
 
@@ -152,6 +157,7 @@ export class EvaluationsService {
     });
   }
 
+  // Called by EvaluationsController.findBreakdown() — returns per-criterion scores for the evaluation.
   async findBreakdown(id: string, organizationId: string) {
     await this.ensureEvaluationExists(id, organizationId);
 
@@ -161,6 +167,7 @@ export class EvaluationsService {
     });
   }
 
+  // Called by EvaluationsController.findSkills() — returns matched/missing skill rows for the evaluation.
   async findSkills(id: string, organizationId: string) {
     await this.ensureEvaluationExists(id, organizationId);
 
@@ -170,6 +177,7 @@ export class EvaluationsService {
     });
   }
 
+  // Called by EvaluationsController.findInterviewQuestions() — returns generated interview question rows for the evaluation.
   async findInterviewQuestions(id: string, organizationId: string) {
     await this.ensureEvaluationExists(id, organizationId);
 
@@ -179,6 +187,7 @@ export class EvaluationsService {
     });
   }
 
+  // Called by EvaluationsController.findEvidence() — returns the evidence map plus per-criterion/skill evidence.
   async findEvidence(id: string, organizationId: string) {
     const evaluation = await this.prisma.evaluation.findFirst({
       where: { id, organizationId },
@@ -208,6 +217,7 @@ export class EvaluationsService {
     return evaluation;
   }
 
+  // Called by EvaluationsController.retry() — wipes prior criteria/skills/questions and re-scores the same evaluation.
   async retry(id: string, currentUserId: string, organizationId: string) {
     const evaluation = await this.prisma.evaluation.findFirst({
       where: { id, organizationId },
@@ -267,6 +277,7 @@ export class EvaluationsService {
     );
   }
 
+  // Called by create()/retry() — invokes AiService.scoreApplication() and persists success or failure state.
   private async scoreAndPersistEvaluation(
     evaluationId: string,
     applicationId: string,
@@ -315,6 +326,7 @@ export class EvaluationsService {
     }
   }
 
+  // Called by scoreAndPersistEvaluation() on success — maps AI results via ScoringResultMapperService and writes all rows in one transaction.
   private async persistSuccessfulEvaluation(
     evaluationId: string,
     applicationId: string,
@@ -404,6 +416,7 @@ export class EvaluationsService {
     });
   }
 
+  // Called by create()/retry() — loads the application/resume/job description and resolves the evaluation config to score against.
   private async buildScoringContext(
     input: Pick<CreateEvaluationDto, 'applicationId' | 'configId'>,
     organizationId: string,
@@ -464,6 +477,7 @@ export class EvaluationsService {
     };
   }
 
+  // Called by buildScoringContext() — uses the requested config id or falls back to the org/job's default config.
   private async resolveEvaluationConfig(
     configId: string | undefined,
     jobDescriptionId: string,
@@ -507,6 +521,7 @@ export class EvaluationsService {
     };
   }
 
+  // Called by resolveEvaluationConfig() — validates and shapes the stored JSON criteria definition into typed criteria configs.
   private parseCriteriaConfig(value: Prisma.JsonValue): ScoreCriterionConfig[] {
     if (!Array.isArray(value) || value.length === 0) {
       throw new AppException('Evaluation config criteria definition is invalid', 409);
@@ -531,6 +546,7 @@ export class EvaluationsService {
     });
   }
 
+  // Called by findByApplicationId() to 404 early when the application isn't found in this org.
   private async ensureApplicationExists(id: string, organizationId: string) {
     const application = await this.prisma.application.findFirst({
       where: { id, organizationId },
@@ -542,6 +558,7 @@ export class EvaluationsService {
     }
   }
 
+  // Called by findBreakdown()/findSkills()/findInterviewQuestions() to 404 early when the evaluation isn't found in this org.
   private async ensureEvaluationExists(id: string, organizationId: string) {
     const evaluation = await this.prisma.evaluation.findFirst({
       where: { id, organizationId },
@@ -553,10 +570,12 @@ export class EvaluationsService {
     }
   }
 
+  // Called by persistSuccessfulEvaluation() to coerce AI-service output into a Prisma-safe JSON array.
   private toJsonArray(value: unknown): Prisma.InputJsonArray {
     return Array.isArray(value) ? (value as Prisma.InputJsonArray) : [];
   }
 
+  // Called by persistSuccessfulEvaluation() to coerce AI-service output into a Prisma-safe JSON object.
   private toJsonObject(value: unknown): Prisma.InputJsonObject {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       return value as Prisma.InputJsonObject;
@@ -565,6 +584,7 @@ export class EvaluationsService {
     return {};
   }
 
+  // Called by persistSuccessfulEvaluation() to coerce optional AI-service fields into Prisma JSON or JsonNull.
   private toJsonNullable(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
     if (value === null || value === undefined) {
       return Prisma.JsonNull;
@@ -573,6 +593,7 @@ export class EvaluationsService {
     return value as Prisma.InputJsonValue;
   }
 
+  // Prisma select shape used by findAll()/findByApplicationId() to return a lighter-weight evaluation summary.
   private getEvaluationListSelect(): Prisma.EvaluationSelect {
     return {
       id: true,
@@ -632,6 +653,7 @@ export class EvaluationsService {
     };
   }
 
+  // Shared Prisma include shape used by create/findOne/persistSuccessfulEvaluation to hydrate related records.
   private getEvaluationInclude(): Prisma.EvaluationInclude {
     return {
       application: {
