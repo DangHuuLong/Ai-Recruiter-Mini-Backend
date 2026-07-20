@@ -1,3 +1,4 @@
+// Body for PATCH /job-skills/:skillId — all fields optional, mirrors CreateJobSkillDto.
 import { JobSkillType } from '@prisma/client';
 import {
   IsBoolean,
