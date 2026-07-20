@@ -1,3 +1,4 @@
+// Body for POST /evaluation-configs — name, optional job description scope, and weighted criteria list.
 import { Type } from 'class-transformer';
 import { ArrayMinSize, IsBoolean, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 
