@@ -1,3 +1,4 @@
+// Calls Gemini's embedContent API, rotating API keys on failure, to embed text into vectors.
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -10,10 +11,6 @@ interface GeminiEmbedResponse {
   embedding: { values: number[] };
 }
 
-// Must match the InterviewQuestionEntry.embedding column (vector(768) in
-// prisma/schema.prisma). gemini-embedding-001 natively outputs 3072 dims
-// but supports Matryoshka truncation via outputDimensionality — 768 keeps
-// the column size already committed rather than requiring a new migration.
 export const EMBEDDING_DIMENSIONS = 768;
 
 @Injectable()
@@ -22,6 +19,7 @@ export class GeminiEmbeddingService {
   private readonly rotator: KeyRotator;
   private readonly model: string;
 
+  // Builds the key rotator and picks the embedding model from llmProviders.gemini config.
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
@@ -30,7 +28,7 @@ export class GeminiEmbeddingService {
     this.model = this.configService.get<string>('llmProviders.gemini.embeddingModel') ?? 'gemini-embedding-001';
   }
 
-  /** Embeds text via Gemini, rotating to the next key on failure until every configured key has been tried once. */
+  // Called by interview-questions.service.ts to embed question text for similarity search/dedup.
   async embed(text: string): Promise<number[]> {
     if (!this.rotator.hasKeys()) {
       throw new Error('No Gemini API keys configured (GEMINI_API_KEY_1..4)');
