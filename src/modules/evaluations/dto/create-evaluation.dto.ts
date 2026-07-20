@@ -1,3 +1,4 @@
+// Body for POST /evaluations — starts scoring an application against an (optional) evaluation config.
 import { IsOptional, IsString } from 'class-validator';
 
 export class CreateEvaluationDto {
