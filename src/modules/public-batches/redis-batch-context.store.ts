@@ -1,3 +1,4 @@
+// Ephemeral, Redis-backed BatchContextStore for the public tier — all keys for a batch share one TTL refreshed on every write, so an abandoned batch just expires with no cleanup job needed.
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OccupationFamily, ScoringBatchStatus } from '@prisma/client';
@@ -81,10 +82,6 @@ export interface PublicBatchSnapshot {
   results: PublicResultRecord[];
 }
 
-// Ephemeral, Redis-backed BatchContextStore for the public tier. All keys
-// for a batch share one TTL, refreshed on every write — an abandoned batch
-// just expires, no cleanup job needed. Counts recompute via HGETALL rather
-// than an atomic counter, avoiding double-count on BullMQ retries.
 @Injectable()
 export class RedisBatchContextStore implements BatchContextStore {
   constructor(
@@ -92,6 +89,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     private readonly configService: ConfigService,
   ) {}
 
+  // Called by PublicBatchesService.create — writes initial batch meta and starts the shared TTL.
   async createBatch(params: {
     id: string;
     ownerSessionId: string;
@@ -123,18 +121,21 @@ export class RedisBatchContextStore implements BatchContextStore {
     await this.touchTtl(params.id);
   }
 
+  // Called by PublicBatchesService.create — stores one resume item record in the batch's Redis hash.
   async addResumeItem(batchId: string, item: PublicResumeItemRecord): Promise<void> {
     const client = this.redisService.getClient();
     await client.hset(this.resumesKey(batchId), item.id, JSON.stringify(item));
     await this.touchTtl(batchId);
   }
 
+  // Called by PublicBatchesService.create — stores one job-description item record in the batch's Redis hash.
   async addJdItem(batchId: string, item: PublicJdItemRecord): Promise<void> {
     const client = this.redisService.getClient();
     await client.hset(this.jdsKey(batchId), item.id, JSON.stringify(item));
     await this.touchTtl(batchId);
   }
 
+  // Called by PublicBatchesService.findOne — assembles the full batch view (meta, resumes, JDs, results) for status polling.
   async getBatchSnapshot(batchId: string): Promise<PublicBatchSnapshot | null> {
     const client = this.redisService.getClient();
     const metaRaw = await client.get(this.metaKey(batchId));
@@ -157,6 +158,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     };
   }
 
+  // Called by resume-parse queue workers via BatchContextStore — applies parse results and caches parsedData by checksum for reuse.
   async updateResumeItem(
     batchId: string,
     resumeItemId: string,
@@ -180,7 +182,6 @@ export class RedisBatchContextStore implements BatchContextStore {
 
     await client.hset(this.resumesKey(batchId), resumeItemId, JSON.stringify(updated));
 
-    // Cache only actually-parsed results, not pending placeholders.
     if (patch.status === 'SUCCESS' && current.checksum && patch.parsedData) {
       const metaRaw = await client.get(this.metaKey(batchId));
 
@@ -199,6 +200,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     await this.touchTtl(batchId);
   }
 
+  // Called by jd-parse queue workers via BatchContextStore — applies parse results and classifier taxonomy to a JD item.
   async updateJdItem(batchId: string, jdItemId: string, patch: JdItemPatch): Promise<void> {
     const client = this.redisService.getClient();
     const raw = await client.hget(this.jdsKey(batchId), jdItemId);
@@ -221,6 +223,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     await this.touchTtl(batchId);
   }
 
+  // Called by score-pair queue workers via BatchContextStore — writes a resume/JD pair's scoring result into Redis.
   async upsertResult(
     batchId: string,
     resumeItemId: string,
@@ -247,6 +250,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     await this.touchTtl(batchId);
   }
 
+  // Called by BatchProgressCoordinatorService to check parse-stage progress after each resume/JD parse job completes.
   async incrementParseCompleted(batchId: string): Promise<CounterResult> {
     const client = this.redisService.getClient();
     const meta = await this.readMeta(client, batchId);
@@ -260,6 +264,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     return { completed, total: meta.totalCvCount + meta.totalJdCount };
   }
 
+  // Called by BatchProgressCoordinatorService to check scoring-stage progress after each score-pair job completes.
   async incrementScoreCompleted(batchId: string): Promise<ScoreCounterResult> {
     const client = this.redisService.getClient();
     const meta = await this.readMeta(client, batchId);
@@ -276,6 +281,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     return { completed, total: meta.totalPairCount, failed };
   }
 
+  // Called by score-pair queue workers to fetch a resume's parsed data before scoring.
   async getResumeParsedData(batchId: string, resumeItemId: string): Promise<ParsedResumeData | null> {
     const client = this.redisService.getClient();
     const raw = await client.hget(this.resumesKey(batchId), resumeItemId);
@@ -287,6 +293,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     return (JSON.parse(raw) as PublicResumeItemRecord).parsedData ?? null;
   }
 
+  // Called by score-pair queue workers to fetch a job description's parsed data before scoring.
   async getJdParsedData(
     batchId: string,
     jdItemId: string,
@@ -301,6 +308,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     return (JSON.parse(raw) as PublicJdItemRecord).parsedData ?? null;
   }
 
+  // Called by score-pair queue workers to fetch a JD item's occupationFamily/specialization for interview-question retrieval.
   async getJdTaxonomy(batchId: string, jdItemId: string): Promise<JdTaxonomy | null> {
     const client = this.redisService.getClient();
     const raw = await client.hget(this.jdsKey(batchId), jdItemId);
@@ -313,6 +321,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     return { occupationFamily: record.occupationFamily ?? null, specialization: record.specialization ?? null };
   }
 
+  // Called by resume-parse queue workers to skip re-parsing when a resume with the same checksum was already parsed in this session.
   async findCachedParsedResumeByChecksum(
     scope: { organizationId?: string; sessionId?: string },
     checksum: string,
@@ -327,6 +336,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     return raw ? (JSON.parse(raw) as ParsedResumeData) : null;
   }
 
+  // Called by PublicBatchesService.create and queue coordinators — transitions batch status and stamps started/completed timestamps.
   async markBatchStatus(batchId: string, status: ScoringBatchStatus): Promise<void> {
     const client = this.redisService.getClient();
     const meta = await this.readMeta(client, batchId);
@@ -347,6 +357,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     await this.writeMeta(client, batchId, meta);
   }
 
+  // Called by queue coordinators for lightweight status checks without loading the full batch snapshot.
   async getBatchStatusOnly(batchId: string): Promise<ScoringBatchStatus> {
     const client = this.redisService.getClient();
     const meta = await this.readMeta(client, batchId);
@@ -354,6 +365,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     return meta.status;
   }
 
+  // Called by BatchProgressCoordinatorService on batch completion to know where to send the webhook/email notification.
   async getNotifyTarget(
     batchId: string,
   ): Promise<{ webhookUrl?: string | null; email?: string | null }> {
@@ -363,6 +375,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     return { webhookUrl: meta.notifyWebhookUrl, email: meta.notifyEmail };
   }
 
+  // Called by BatchProgressCoordinatorService after parsing completes to determine which resume/JD pairs to enqueue for scoring.
   async getSuccessfullyParsedItemIds(
     batchId: string,
   ): Promise<{ resumeItemIds: string[]; jdItemIds: string[] }> {
@@ -378,11 +391,12 @@ export class RedisBatchContextStore implements BatchContextStore {
     };
   }
 
+  // Called by score-pair queue workers — public batches always score against DEFAULT_EVALUATION_CRITERIA, no per-batch config.
   async getBatchCriteria(_batchId: string): Promise<ScoreCriterionConfig[]> {
-    // No persisted EvaluationConfig for public batches.
     return DEFAULT_EVALUATION_CRITERIA;
   }
 
+  // Called by BatchProgressCoordinatorService to read the current cv/jd/pair counts for progress calculations.
   async getBatchTotals(
     batchId: string,
   ): Promise<{ totalCvCount: number; totalJdCount: number; totalPairCount: number }> {
@@ -396,6 +410,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     };
   }
 
+  // Called by BatchProgressCoordinatorService once resume x JD pairs are known, to set the total for progress tracking.
   async setBatchPairCount(batchId: string, totalPairCount: number): Promise<void> {
     const client = this.redisService.getClient();
     const meta = await this.readMeta(client, batchId);
@@ -403,6 +418,7 @@ export class RedisBatchContextStore implements BatchContextStore {
     await this.writeMeta(client, batchId, meta);
   }
 
+  // Called by incrementParseCompleted — counts resume/JD items that reached a terminal SUCCESS/FAILED state.
   private countSettled(map: Record<string, string>): number {
     return Object.values(map).filter((raw) => {
       const item = JSON.parse(raw) as { status: string };
@@ -410,12 +426,14 @@ export class RedisBatchContextStore implements BatchContextStore {
     }).length;
   }
 
+  // Called by getSuccessfullyParsedItemIds — filters a Redis hash down to ids of items with status SUCCESS.
   private filterSuccessIds(map: Record<string, string>): string[] {
     return Object.entries(map)
       .filter(([, raw]) => (JSON.parse(raw) as { status: string }).status === 'SUCCESS')
       .map(([id]) => id);
   }
 
+  // Shared helper used across most methods — loads batch meta from Redis or throws 404 if the batch expired/doesn't exist.
   private async readMeta(client: Redis, batchId: string): Promise<PublicBatchMeta> {
     const raw = await client.get(this.metaKey(batchId));
 
@@ -426,11 +444,13 @@ export class RedisBatchContextStore implements BatchContextStore {
     return JSON.parse(raw) as PublicBatchMeta;
   }
 
+  // Shared helper used by markBatchStatus/incrementScoreCompleted/setBatchPairCount — persists meta and refreshes the TTL.
   private async writeMeta(client: Redis, batchId: string, meta: PublicBatchMeta): Promise<void> {
     await client.set(this.metaKey(batchId), JSON.stringify(meta));
     await this.touchTtl(batchId);
   }
 
+  // Called on every write across this store — refreshes the shared TTL on all of a batch's Redis keys so idle batches expire uniformly.
   private async touchTtl(batchId: string): Promise<void> {
     const client = this.redisService.getClient();
     const ttl = this.getTtlSeconds();
@@ -442,30 +462,37 @@ export class RedisBatchContextStore implements BatchContextStore {
     ]);
   }
 
+  // Called by touchTtl and updateResumeItem's checksum cache — reads the configured PUBLIC_BATCH_TTL_SECONDS.
   private getTtlSeconds(): number {
     return this.configService.get<number>('PUBLIC_BATCH_TTL_SECONDS') ?? 21600;
   }
 
+  // Called by upsertResult — builds the composite Redis hash field key for a resume/JD result pair.
   private resultField(resumeItemId: string, jdItemId: string): string {
     return `${resumeItemId}:${jdItemId}`;
   }
 
+  // Builds the Redis key for a batch's meta record; used throughout this store.
   private metaKey(batchId: string): string {
     return `public:batch:${batchId}:meta`;
   }
 
+  // Builds the Redis key for a batch's resume-items hash; used throughout this store.
   private resumesKey(batchId: string): string {
     return `public:batch:${batchId}:resumes`;
   }
 
+  // Builds the Redis key for a batch's JD-items hash; used throughout this store.
   private jdsKey(batchId: string): string {
     return `public:batch:${batchId}:jds`;
   }
 
+  // Builds the Redis key for a batch's results hash; used throughout this store.
   private resultsKey(batchId: string): string {
     return `public:batch:${batchId}:results`;
   }
 
+  // Builds the Redis key used by updateResumeItem/findCachedParsedResumeByChecksum to cache parsed resumes per session+checksum.
   private sessionChecksumKey(sessionId: string, checksum: string): string {
     return `public:session:${sessionId}:checksum:${checksum}`;
   }
