@@ -1,3 +1,4 @@
+// Query params for paging through a scoring batch's resume-x-JD score matrix.
 import { Transform } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
