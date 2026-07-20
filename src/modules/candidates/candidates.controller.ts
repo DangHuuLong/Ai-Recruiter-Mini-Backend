@@ -1,3 +1,4 @@
+// Controller for /candidates — create/update/list/delete candidates and fetch their resumes.
 import {
   Body,
   Controller,
@@ -29,6 +30,7 @@ import type { AuthUser } from '../../common/types/auth-user.type';
 export class CandidatesController {
   constructor(private readonly candidatesService: CandidatesService) {}
 
+  // POST /candidates — creates a candidate directly (not via resume parsing).
   @Post()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(
@@ -46,6 +48,7 @@ export class CandidatesController {
     };
   }
 
+  // PATCH /candidates/:id — updates a candidate's profile fields.
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(
@@ -65,6 +68,7 @@ export class CandidatesController {
     };
   }
 
+  // GET /candidates — paginated, searchable list of candidates in the current org.
   @Get()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: CandidateQueryDto, @CurrentUser() currentUser: AuthUser) {
@@ -77,6 +81,7 @@ export class CandidatesController {
     };
   }
 
+  // GET /candidates/:id — fetches a single candidate with a resume count.
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -88,6 +93,7 @@ export class CandidatesController {
     };
   }
 
+  // GET /candidates/:id/resumes — lists resumes uploaded for a candidate.
   @Get(':id/resumes')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findResumesByCandidateId(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -102,6 +108,7 @@ export class CandidatesController {
     };
   }
 
+  // DELETE /candidates/:id — deletes a candidate with no related resumes/applications; audit-logged via AuditLogInterceptor.
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   @UseInterceptors(AuditLogInterceptor)
