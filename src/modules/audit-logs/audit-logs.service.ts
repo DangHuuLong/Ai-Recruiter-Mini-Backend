@@ -1,3 +1,4 @@
+// Service for querying audit log entries with pagination and filters, scoped to the caller's organization.
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
@@ -8,6 +9,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 export class AuditLogsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Called by AuditLogsController.findAll() — filters and paginates audit log entries scoped to the org.
   async findAll(query: AuditLogQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
