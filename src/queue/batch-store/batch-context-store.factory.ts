@@ -1,3 +1,4 @@
+// Picks the Prisma or Redis batch context store implementation based on batch tier.
 import { Injectable } from '@nestjs/common';
 
 import { BatchContextStore } from './batch-context-store.interface';
@@ -12,6 +13,7 @@ export class BatchContextStoreFactory {
     private readonly redisStore: RedisBatchContextStore,
   ) {}
 
+  // Called throughout the queue processors and batch services to get the right store (Prisma for enterprise, Redis for public) without branching on tier everywhere.
   forTier(tier: BatchTier): BatchContextStore {
     if (tier === 'ENTERPRISE') {
       return this.prismaStore;
