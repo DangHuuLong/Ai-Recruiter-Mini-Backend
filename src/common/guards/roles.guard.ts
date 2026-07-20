@@ -1,3 +1,4 @@
+// Guards routes annotated with @Roles(), rejecting users whose role isn't in the allowed list.
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '@prisma/client';
@@ -14,6 +15,7 @@ type RequestWithUser = {
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
+  // Runs after JwtAuthGuard on routes tagged with @Roles(); blocks users whose role isn't in the allowed list.
   canActivate(context: ExecutionContext): boolean {
     const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
       context.getHandler(),
