@@ -1,3 +1,4 @@
+// Joi schema validating all required/optional env vars at app bootstrap.
 import * as Joi from 'joi';
 
 export const envValidationSchema = Joi.object({
