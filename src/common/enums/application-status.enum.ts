@@ -1,3 +1,4 @@
+// Lifecycle states of a candidate's Application from draft through hired/rejected.
 export enum ApplicationStatusEnum {
   DRAFT = 'DRAFT',
   APPLIED = 'APPLIED',

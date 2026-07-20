@@ -1,3 +1,4 @@
+// Body for PATCH /resumes/:id — partial update of a resume's parsed text/data/status fields.
 import { IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
 
 import { ParseStatusEnum } from '../../../common/enums';

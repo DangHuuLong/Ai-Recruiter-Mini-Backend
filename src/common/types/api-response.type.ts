@@ -1,3 +1,4 @@
+// Shared response envelope types used by TransformResponseInterceptor and AppException.
 export type ErrorItem = {
   field: string | null;
   message: string;

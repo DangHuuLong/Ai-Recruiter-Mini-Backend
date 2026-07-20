@@ -1,3 +1,4 @@
+// Body for PATCH /evaluation-configs/:id — all CreateEvaluationConfigDto fields made optional.
 import { Type } from 'class-transformer';
 import { ArrayMinSize, IsBoolean, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 

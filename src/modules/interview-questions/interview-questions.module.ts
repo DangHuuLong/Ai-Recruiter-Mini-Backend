@@ -1,3 +1,4 @@
+// Nest module wiring for the Interview Questions feature (controller, service, AI generator, LLM providers).
 import { Module } from '@nestjs/common';
 
 import { InterviewQuestionGeneratorService } from './interview-question-generator.service';

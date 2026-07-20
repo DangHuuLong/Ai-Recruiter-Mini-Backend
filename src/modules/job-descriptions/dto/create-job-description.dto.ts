@@ -1,3 +1,4 @@
+// Body for POST /job-descriptions — raw job description fields prior to AI parsing.
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateJobDescriptionDto {

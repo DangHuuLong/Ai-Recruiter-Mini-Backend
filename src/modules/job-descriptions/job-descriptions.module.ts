@@ -1,3 +1,4 @@
+// Nest module wiring for the Job Descriptions feature (JD + skills controllers/services, classifier, AI and LLM providers).
 import { Module } from '@nestjs/common';
 
 import { JobDescriptionClassifierService } from './job-description-classifier.service';

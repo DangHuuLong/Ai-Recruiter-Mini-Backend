@@ -1,3 +1,4 @@
+// HTTP routes for creating scoring batches, uploading files, polling status/matrix/cells, and exporting or promoting results.
 import {
   Body,
   Controller,
@@ -38,6 +39,7 @@ export class ScoringBatchesController {
     private readonly promoteService: ScoringBatchPromoteService,
   ) {}
 
+  // POST /scoring-batches/upload-urls — issues pre-signed URLs so the client can upload files before creating a batch.
   @Post('upload-urls')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async createUploadUrls(
@@ -63,6 +65,7 @@ export class ScoringBatchesController {
     envVar: 'ENTERPRISE_RATE_LIMIT_MAX_BATCHES_PER_HOUR',
     defaultMax: 20,
   })
+  // POST /scoring-batches — creates a batch and enqueues resume/JD parse jobs; returns 202 since work runs async on the queue.
   @HttpCode(202)
   async create(@Body() dto: CreateScoringBatchDto, @CurrentUser() currentUser: AuthUser) {
     const data = await this.scoringBatchesService.create(
@@ -77,6 +80,7 @@ export class ScoringBatchesController {
     };
   }
 
+  // GET /scoring-batches/:id — polled by clients to track parse/scoring progress and overall batch status.
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async getStatus(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -85,6 +89,7 @@ export class ScoringBatchesController {
     return { message: 'Batch status retrieved successfully', data };
   }
 
+  // GET /scoring-batches/:id/matrix — paginated resume x JD score grid, used by the results UI.
   @Get(':id/matrix')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async getMatrix(
@@ -97,6 +102,7 @@ export class ScoringBatchesController {
     return { message: 'Batch matrix retrieved successfully', data };
   }
 
+  // GET /scoring-batches/:id/cells/:resumeItemId/:jdItemId — full scoring detail for a single resume x JD pair.
   @Get(':id/cells/:resumeItemId/:jdItemId')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async getCell(
@@ -115,6 +121,7 @@ export class ScoringBatchesController {
     return { message: 'Cell retrieved successfully', data };
   }
 
+  // GET /scoring-batches/:id/skill-gap-summary — aggregated missing-skill report across the batch, optionally scoped to one JD.
   @Get(':id/skill-gap-summary')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async getSkillGapSummary(
@@ -131,6 +138,7 @@ export class ScoringBatchesController {
     return { message: 'Skill gap summary retrieved successfully', data };
   }
 
+  // GET /scoring-batches/:id/export — streams the batch's score matrix as a downloadable CSV file.
   @Get(':id/export')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async exportCsv(
@@ -148,6 +156,7 @@ export class ScoringBatchesController {
   @Post(':id/cancel')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   @UseInterceptors(AuditLogInterceptor)
+  // POST /scoring-batches/:id/cancel — stops further processing of a batch; audited via AuditLogInterceptor.
   @AuditLog({ action: 'CANCEL', resourceType: 'ScoringBatch' })
   async cancel(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
     const data = await this.scoringBatchesService.cancel(id, currentUser.organizationId);
@@ -158,6 +167,7 @@ export class ScoringBatchesController {
   @Post(':id/promote')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   @UseInterceptors(AuditLogInterceptor)
+  // POST /scoring-batches/:id/promote — turns selected cells into real Candidate/Application/Evaluation rows via ScoringBatchPromoteService.
   @AuditLog({ action: 'PROMOTE', resourceType: 'ScoringBatch' })
   async promote(
     @Param('id') id: string,

@@ -1,3 +1,4 @@
+// HTTP routes for creating, listing, parsing, and managing resumes within an organization.
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
@@ -16,6 +17,7 @@ import type { AuthUser } from '../../common/types/auth-user.type';
 export class ResumesController {
   constructor(private readonly resumesService: ResumesService) {}
 
+  // POST /resumes — links an existing file asset to a candidate; delegates to ResumesService.create.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(@Body() createResumeDto: CreateResumeDto, @CurrentUser() currentUser: AuthUser) {
@@ -27,6 +29,7 @@ export class ResumesController {
     };
   }
 
+  // GET /resumes — paginated, filterable list of resumes for the caller's organization.
   @Get()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: ResumeQueryDto, @CurrentUser() currentUser: AuthUser) {
@@ -39,6 +42,7 @@ export class ResumesController {
     };
   }
 
+  // GET /resumes/:id — fetches a single resume with candidate and file asset details.
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -50,6 +54,7 @@ export class ResumesController {
     };
   }
 
+  // POST /resumes/:id/parse — triggers AI parsing of the resume's file via ResumesService.parse.
   @Post(':id/parse')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async parse(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -61,6 +66,7 @@ export class ResumesController {
     };
   }
 
+  // GET /resumes/:id/parsed-data — returns just the AI-parsed text/data/status fields of a resume.
   @Get(':id/parsed-data')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async getParsedData(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -72,6 +78,7 @@ export class ResumesController {
     };
   }
 
+  // PATCH /resumes/:id — partial update of a resume's parsed fields via ResumesService.update.
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(
@@ -87,6 +94,7 @@ export class ResumesController {
     };
   }
 
+  // DELETE /resumes/:id — deletes a resume via ResumesService.remove, blocked if applications reference it.
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async remove(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {

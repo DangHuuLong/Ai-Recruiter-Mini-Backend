@@ -1,3 +1,4 @@
+// HTTP client for the Python AI service: health, resume/JD parsing, application scoring.
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { AxiosError } from 'axios';
@@ -23,6 +24,7 @@ export class AiService {
 
   constructor(private readonly httpService: HttpService) {}
 
+  // Pings the Python AI service's /health endpoint; used for readiness/status checks.
   async checkHealth(): Promise<AiHealthData> {
     return this.request<AiHealthData>('GET /health', async () => {
       const response = await firstValueFrom(
@@ -33,6 +35,7 @@ export class AiService {
     });
   }
 
+  // Called by resume-parse.processor.ts (BullMQ handler) and resumes.service.ts to extract structured data from resume text.
   async parseResume(payload: ParseResumeRequest): Promise<ParseResumeResult> {
     return this.request<ParseResumeResult>('POST /parse/resume', async () => {
       const response = await firstValueFrom(
@@ -43,6 +46,7 @@ export class AiService {
     });
   }
 
+  // Called by jd-parse.processor.ts (BullMQ handler) and job-descriptions.service.ts to extract structured data from a job description.
   async parseJobDescription(payload: ParseJobDescriptionRequest): Promise<ParsedJobDescriptionData> {
     return this.request<ParsedJobDescriptionData>('POST /parse/job-description', async () => {
       const response = await firstValueFrom(
@@ -56,6 +60,7 @@ export class AiService {
     });
   }
 
+  // Called by score-pair.processor.ts (BullMQ handler) and evaluations.service.ts to score a resume against a job description.
   async scoreApplication(
     resume: ParsedResumeData,
     jobDescription: ParsedJobDescriptionData,
@@ -78,6 +83,7 @@ export class AiService {
     });
   }
 
+  // Shared wrapper used by all public methods above to log failures and translate them via mapAiServiceError.
   private async request<T>(operation: string, handler: () => Promise<T>): Promise<T> {
     try {
       return await handler();
@@ -88,6 +94,7 @@ export class AiService {
     }
   }
 
+  // Unwraps the AI service's success/data envelope; used inside each request() handler above.
   private extractData<T>(response: AiServiceResponse<T>, invalidResponseMessage: string): T {
     if (!response || response.success !== true || response.data === undefined) {
       throw new AppException(invalidResponseMessage, 502);
@@ -96,16 +103,12 @@ export class AiService {
     return response.data;
   }
 
+  // Translates axios/network errors from the AI service into an AppException; invoked from request()'s catch block.
   private mapAiServiceError(error: unknown): AppException {
     const axiosError = error as AxiosError<{
       success?: boolean;
       message?: string;
       errors?: unknown[];
-      // FastAPI's own default error shape ({"detail": ...}) leaks through
-      // for any error the AI service's exception handlers don't cover —
-      // detail can be a plain string or an array of Pydantic validation
-      // error objects ({loc, msg, type}). Fall back to it defensively
-      // rather than trusting `message` is always present.
       detail?: string | Array<{ msg?: string }>;
     }>;
 
@@ -130,6 +133,7 @@ export class AiService {
     return new AppException('Unexpected AI service error', 502);
   }
 
+  // Flattens FastAPI validation error `detail` payloads into a single message; used by mapAiServiceError.
   private extractDetailMessage(detail: string | Array<{ msg?: string }> | undefined): string | null {
     if (typeof detail === 'string') {
       return detail;

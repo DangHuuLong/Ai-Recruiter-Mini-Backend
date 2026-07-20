@@ -1,3 +1,4 @@
+// Keyed by organizationId, not userId — opt-in via @RateLimit(), unlike PublicRateLimitGuard.
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
@@ -13,7 +14,6 @@ type RequestWithUser = {
   user?: AuthUser;
 };
 
-// Keyed by organizationId, not userId — opt-in via @RateLimit(), unlike PublicRateLimitGuard.
 @Injectable()
 export class EnterpriseRateLimitGuard implements CanActivate {
   constructor(
@@ -22,6 +22,7 @@ export class EnterpriseRateLimitGuard implements CanActivate {
     private readonly reflector: Reflector,
   ) {}
 
+  // Applied to routes tagged with @RateLimit(); enforces per-organization hourly caps for enterprise users via Redis.
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const options = this.reflector.get<RateLimitOptions | undefined>(RATE_LIMIT_KEY, context.getHandler());
 

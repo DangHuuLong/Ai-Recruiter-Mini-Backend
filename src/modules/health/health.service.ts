@@ -1,3 +1,4 @@
+// Checks database, Redis, and storage bucket connectivity and reports overall service health.
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../database/prisma/prisma.service';
@@ -12,6 +13,7 @@ export class HealthService {
     private readonly storageService: SupabaseStorageService,
   ) {}
 
+  // Called by HealthController.check — pings Postgres, Redis (if enabled), and storage to build the health report.
   async check() {
     await this.prisma.$queryRaw`SELECT 1`;
 

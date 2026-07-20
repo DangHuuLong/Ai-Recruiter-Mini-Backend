@@ -1,3 +1,4 @@
+// Maps raw AI-service evaluation results into persistence-ready criteria, skills, and interview question rows.
 import { Injectable, Logger } from '@nestjs/common';
 import { CriterionName, OccupationFamily, SkillMatchType } from '@prisma/client';
 
@@ -36,8 +37,6 @@ export interface JobDescriptionTaxonomy {
   specialization: string | null;
 }
 
-// Structural type covering both SearchResultRow and the row returned by
-// InterviewQuestionsService.create() — the two shapes searchOrGenerate() can return.
 interface RetrievedQuestionLike {
   questionText: string;
   competency: string;
@@ -45,22 +44,13 @@ interface RetrievedQuestionLike {
   rubric: string[];
 }
 
-/**
- * Shared AI-service-result-to-persistence mapping, used by both the
- * single-application EvaluationsService (relational rows) and the
- * score-pair queue processor (denormalized JSON on ScoringBatchResult).
- * Callers own the persistence shape; this only clamps/normalizes the
- * AI service's raw snake_case response.
- */
 @Injectable()
 export class ScoringResultMapperService {
   private readonly logger = new Logger(ScoringResultMapperService.name);
 
   constructor(private readonly interviewQuestionsService: InterviewQuestionsService) {}
 
-  // Prefers the retrieval-backed question bank when the JD is classified; falls back to the
-  // AI service's rule-based questions otherwise (or if retrieval fails/comes up empty) — this
-  // fallback must never throw, since a broken retrieval path must not fail evaluation/scoring.
+  // Called by EvaluationsService.persistSuccessfulEvaluation() — tries the retrieval-based question bank via InterviewQuestionsService, falling back to the AI-service's own questions.
   async buildInterviewQuestions(
     taxonomy: JobDescriptionTaxonomy | null,
     result: EvaluationResult,
@@ -88,6 +78,7 @@ export class ScoringResultMapperService {
     return this.mapInterviewQuestions(result);
   }
 
+  // Called by buildInterviewQuestions() to derive the search query text from the skill gap summary or missing skills.
   private buildInterviewQuestionQueryText(result: EvaluationResult): string | null {
     if (result.skill_gap_summary?.trim()) {
       return result.skill_gap_summary.trim();
@@ -96,6 +87,7 @@ export class ScoringResultMapperService {
     return missingSkills.length > 0 ? `Candidate is missing these skills: ${missingSkills.join(', ')}` : null;
   }
 
+  // Called by buildInterviewQuestions() to convert a retrieved/generated question bank entry into the persistence row shape.
   private toMappedInterviewQuestion(item: RetrievedQuestionLike, index: number): MappedInterviewQuestion {
     const difficulty =
       item.experienceBucket === 'EIGHT_PLUS' ? 'HARD' : item.experienceBucket === 'FIVE_TO_EIGHT' ? 'MEDIUM' : 'EASY';
@@ -110,6 +102,7 @@ export class ScoringResultMapperService {
     };
   }
 
+  // Called by EvaluationsService.persistSuccessfulEvaluation() — clamps and reshapes raw AI criteria scores for storage.
   mapCriteria(result: EvaluationResult): MappedCriterion[] {
     return result.criteria.map((item) => ({
       criterion: item.criterion,
@@ -120,6 +113,7 @@ export class ScoringResultMapperService {
     }));
   }
 
+  // Called by EvaluationsService.persistSuccessfulEvaluation() — reshapes raw AI skill results for storage.
   mapSkills(result: EvaluationResult): MappedSkill[] {
     return result.skills.map((item) => ({
       skillName: item.skill_name,
@@ -131,6 +125,7 @@ export class ScoringResultMapperService {
     }));
   }
 
+  // Fallback used by buildInterviewQuestions() when no retrieval/generated questions are available — reshapes the AI-service's own questions.
   mapInterviewQuestions(result: EvaluationResult): MappedInterviewQuestion[] {
     return result.interview_questions.map((item, index) => ({
       question: item.question,
@@ -142,13 +137,14 @@ export class ScoringResultMapperService {
     }));
   }
 
+  // Called by EvaluationsService.persistSuccessfulEvaluation() — computes the weighted overall score stored on the evaluation.
   calculateOverallScore(criteria: Array<{ scoreNormalized: number; weight: number }>): number {
     const score = criteria.reduce((total, item) => total + item.scoreNormalized * item.weight * 100, 0);
 
     return Math.round(score * 100) / 100;
   }
 
-  /** Converts an AI-service criterion string to the Prisma enum, for callers that persist relational rows. */
+  // Called by EvaluationsService.persistSuccessfulEvaluation() — validates an AI-returned criterion string against the Prisma enum.
   toCriterionName(value: string): CriterionName {
     if (Object.values(CriterionName).includes(value as CriterionName)) {
       return value as CriterionName;
@@ -157,7 +153,7 @@ export class ScoringResultMapperService {
     throw new AppException(`Unsupported criterion: ${value}`, 502);
   }
 
-  /** Converts an AI-service skill match type to the Prisma enum, for callers that persist relational rows. */
+  // Called by EvaluationsService.persistSuccessfulEvaluation() — maps an AI-returned skill match type to the Prisma enum.
   toSkillMatchType(value: string): SkillMatchType {
     if (value === 'PARTIAL') {
       return SkillMatchType.RELATED;
@@ -170,6 +166,7 @@ export class ScoringResultMapperService {
     throw new AppException(`Unsupported skill match type: ${value}`, 502);
   }
 
+  // Called by mapCriteria() to keep score/weight values within the valid 0-1 range.
   private clamp01(value: number): number {
     return Math.min(Math.max(value, 0), 1);
   }

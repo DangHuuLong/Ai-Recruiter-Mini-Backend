@@ -1,3 +1,4 @@
+// Query params for GET /applications — pagination, filters, search, and sorting.
 import { Transform } from 'class-transformer';
 import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 

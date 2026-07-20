@@ -1,3 +1,4 @@
+// Service for evaluation configs — create/update/delete, criteria weight validation, and single-default enforcement per scope.
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
@@ -14,6 +15,7 @@ const WEIGHT_SUM_TOLERANCE = 0.001;
 export class EvaluationConfigsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Called by EvaluationConfigsController.create() — validates weights, unsets any prior default, and persists the config.
   async create(dto: CreateEvaluationConfigDto, organizationId: string, currentUserId: string) {
     this.validateCriteria(dto.criteria);
     await this.ensureJobDescriptionBelongsToOrg(dto.jobDescriptionId, organizationId);
@@ -39,6 +41,7 @@ export class EvaluationConfigsService {
     });
   }
 
+  // Called by EvaluationConfigsController.findAll() — returns a paginated, optionally job-scoped list of configs.
   async findAll(query: EvaluationConfigQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
@@ -65,10 +68,12 @@ export class EvaluationConfigsService {
     };
   }
 
+  // Called by EvaluationConfigsController.findOne() — fetches a single config, 404s if not found in the org.
   async findOne(id: string, organizationId: string) {
     return this.ensureExists(id, organizationId);
   }
 
+  // Called by EvaluationConfigsController.update() — revalidates weights/job scope and swaps the default config if needed.
   async update(id: string, dto: UpdateEvaluationConfigDto, organizationId: string) {
     const existing = await this.ensureExists(id, organizationId);
 
@@ -107,6 +112,7 @@ export class EvaluationConfigsService {
     });
   }
 
+  // Called by EvaluationConfigsController.remove() — deletes a config after confirming it exists in the org.
   async remove(id: string, organizationId: string) {
     await this.ensureExists(id, organizationId);
     await this.prisma.evaluationConfig.delete({ where: { id } });
@@ -114,6 +120,7 @@ export class EvaluationConfigsService {
     return { id, deleted: true };
   }
 
+  // Called by findOne()/update()/remove() to load a config scoped to the org or throw a 404.
   private async ensureExists(id: string, organizationId: string) {
     const config = await this.prisma.evaluationConfig.findFirst({ where: { id, organizationId } });
 
@@ -124,6 +131,7 @@ export class EvaluationConfigsService {
     return config;
   }
 
+  // Called by create()/update() to verify an optional job description scope belongs to the org.
   private async ensureJobDescriptionBelongsToOrg(
     jobDescriptionId: string | undefined,
     organizationId: string,
@@ -142,8 +150,7 @@ export class EvaluationConfigsService {
     }
   }
 
-  // Only one isDefault config should exist per (organization, jobDescriptionId) scope —
-  // jobDescriptionId null means the org-wide default. excludeId lets update() skip itself.
+  // Called by create()/update() to unset the previous default config within the same org/job scope before setting a new one.
   private async clearExistingDefault(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -161,6 +168,7 @@ export class EvaluationConfigsService {
     });
   }
 
+  // Called by create()/update() to reject duplicate criteria and enforce that weights sum to 1.0.
   private validateCriteria(criteria: CriterionDefinitionDto[]) {
     const seen = new Set<string>();
 
@@ -178,6 +186,7 @@ export class EvaluationConfigsService {
     }
   }
 
+  // Called by create()/update()/validateCriteria() to compute the total weight stored as totalWeight.
   private sumWeights(criteria: CriterionDefinitionDto[]): number {
     return Math.round(criteria.reduce((sum, item) => sum + item.weight, 0) * 10000) / 10000;
   }

@@ -1,3 +1,4 @@
+// Body for POST /job-descriptions/:id/skills — a single required/preferred skill entry.
 import { JobSkillType } from '@prisma/client';
 import {
   IsBoolean,

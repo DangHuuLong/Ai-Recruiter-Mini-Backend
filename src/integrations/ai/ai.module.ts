@@ -1,3 +1,4 @@
+// Wires AiService with an HttpClient configured from AI_SERVICE_URL / AI_REQUEST_TIMEOUT_MS.
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';

@@ -1,3 +1,4 @@
+// Structured (pre-parsed) resume input for a scoring batch, covering personal info, skills, education, experience, and more.
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,

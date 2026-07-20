@@ -1,9 +1,12 @@
+// Collects per-provider API keys/models (Gemini, GPT, Groq, Cerebras) into the llmProviders config namespace.
+// Helper used below by llmProvidersConfig() to gather up to 4 numbered API keys per provider prefix.
 function collectKeys(prefix: string): string[] {
   return [1, 2, 3, 4]
     .map((n) => process.env[`${prefix}_${n}`])
     .filter((key): key is string => Boolean(key));
 }
 
+// Registered in ConfigModule.forRoot({ load: [...] }) in app.module.ts; consumed by KeyRotator and MultiProviderCompletionService for provider fallback.
 export const llmProvidersConfig = () => ({
   llmProviders: {
     gemini: {

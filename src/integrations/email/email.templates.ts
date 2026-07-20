@@ -1,3 +1,5 @@
+// HTML templates for verification, password-reset, and batch-completed emails.
+// Builds the account-verification email sent by the auth flow via EmailService.send().
 export function verifyEmailTemplate(params: { fullName: string | null; verifyUrl: string }) {
   const greeting = params.fullName ? `Hi ${params.fullName},` : 'Hi,';
 
@@ -10,6 +12,7 @@ export function verifyEmailTemplate(params: { fullName: string | null; verifyUrl
   };
 }
 
+// Builds the password-reset email sent by the auth flow via EmailService.send().
 export function passwordResetTemplate(params: { fullName: string | null; resetUrl: string }) {
   const greeting = params.fullName ? `Hi ${params.fullName},` : 'Hi,';
 
@@ -22,6 +25,7 @@ export function passwordResetTemplate(params: { fullName: string | null; resetUr
   };
 }
 
+// Builds the scoring-batch-completed notification email sent from notify.processor.ts via EmailService.send().
 export function batchCompletedTemplate(params: {
   batchId: string;
   status: string;

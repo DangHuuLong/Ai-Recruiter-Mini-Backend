@@ -1,3 +1,4 @@
+// Query params for GET /users — pagination, search, role/active filters, and sorting.
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { UserRole } from '@prisma/client';

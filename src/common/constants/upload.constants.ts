@@ -1,3 +1,4 @@
+// Constants governing allowed resume file types, extensions, and size limits for uploads.
 export const UPLOAD_ALLOWED_MIME_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

@@ -1,3 +1,4 @@
+// Service for JobDescription CRUD, AI-driven parsing (raw text to structured data plus taxonomy classification), and skill sync.
 import { Injectable } from '@nestjs/common';
 import { ParseStatus, Prisma } from '@prisma/client';
 
@@ -22,6 +23,7 @@ export class JobDescriptionsService {
     private readonly classifierService: JobDescriptionClassifierService,
   ) {}
 
+  // Called by JobDescriptionsController.create — persists a raw JobDescription prior to AI parsing.
   async create(
     createJobDescriptionDto: CreateJobDescriptionDto,
     currentUserId: string,
@@ -43,6 +45,7 @@ export class JobDescriptionsService {
     });
   }
 
+  // Called by JobDescriptionsController.findAll — paginated, org-scoped, searchable listing of active job descriptions.
   async findAll(query: JobDescriptionQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
@@ -82,6 +85,7 @@ export class JobDescriptionsService {
     };
   }
 
+  // Called by JobDescriptionsController.findOne, and internally by parse/update/deactivate — fetches an active, org-scoped JD or throws 404.
   async findOne(id: string, organizationId: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
       where: { id, isActive: true, organizationId },
@@ -98,6 +102,7 @@ export class JobDescriptionsService {
     return jobDescription;
   }
 
+  // Called by JobDescriptionsController.parse — runs AiService parsing + JobDescriptionClassifierService, then syncs skills via JobSkillsService.
   async parse(id: string, organizationId: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
       where: { id, isActive: true, organizationId },
@@ -153,6 +158,7 @@ export class JobDescriptionsService {
     }
   }
 
+  // Called by JobDescriptionsController.getParsedData — returns the structured AI-parsed fields for a JD.
   async getParsedData(id: string, organizationId: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
       where: { id, isActive: true, organizationId },
@@ -175,6 +181,7 @@ export class JobDescriptionsService {
     return jobDescription;
   }
 
+  // Called by JobDescriptionsController.update — partial update; validates manual occupationFamily/specialization override against the taxonomy.
   async update(
     id: string,
     updateJobDescriptionDto: UpdateJobDescriptionDto,
@@ -215,12 +222,14 @@ export class JobDescriptionsService {
     });
   }
 
+  // Called by JobDescriptionsController.remove — soft-deletes a JD by flipping isActive off.
   async deactivate(id: string, organizationId: string) {
     await this.findOne(id, organizationId);
 
     return this.prisma.jobDescription.update({ where: { id }, data: { isActive: false } });
   }
 
+  // Called by parse()'s catch block to normalize the error into a persisted parsingError message.
   private getParsingErrorMessage(error: unknown): string {
     if (error instanceof AppException) return error.message;
     if (error instanceof Error) return error.message;

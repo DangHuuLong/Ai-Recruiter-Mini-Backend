@@ -1,3 +1,4 @@
+// Builds an LLM prompt from the interview-question taxonomy and generates+validates new question candidates as an AI fallback when search results are thin.
 import { Injectable, Logger } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -15,9 +16,7 @@ interface GenerateParams {
   count: number;
 }
 
-// Generic counterpart to the hand-written per-industry seed prompts — must
-// work for any occupationFamily/specialization, so it leans on taxonomy
-// vocabulary instead of an embedded "existing questions" list.
+// Called by generate() to build the LLM prompt from taxonomy examples and the caller's query/enablers.
 function buildPrompt(params: GenerateParams): string {
   const taxonomyEntry = INTERVIEW_QUESTION_TAXONOMY.find(
     (entry) => entry.occupationFamily === params.occupationFamily,
@@ -54,6 +53,7 @@ Return pure JSON only, no markdown code fence, no explanation before or after. S
 }`;
 }
 
+// Called by generate() to strip a ```json fence the LLM may wrap its JSON response in before parsing.
 function stripMarkdownFence(text: string): string {
   const trimmed = text.trim();
   const fenceMatch = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
@@ -66,7 +66,7 @@ export class InterviewQuestionGeneratorService {
 
   constructor(private readonly completionService: MultiProviderCompletionService) {}
 
-  // Never throws on a bad LLM response — returns whatever validated items it could salvage (possibly zero).
+  // Called by InterviewQuestionsService.searchOrGenerate — prompts the LLM, parses/validates candidates, drops any that fail DTO validation.
   async generate(params: GenerateParams): Promise<CreateInterviewQuestionDto[]> {
     let raw: string;
     try {
@@ -94,7 +94,6 @@ export class InterviewQuestionGeneratorService {
     for (const item of items) {
       const candidate = plainToInstance(CreateInterviewQuestionDto, {
         ...(item as Record<string, unknown>),
-        // Never trust the model to echo these back correctly.
         occupationFamily: params.occupationFamily,
         specialization: params.specialization,
         source: InterviewQuestionSource.AI_GENERATED,

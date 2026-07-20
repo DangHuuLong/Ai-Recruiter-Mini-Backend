@@ -1,3 +1,4 @@
+// Global module wiring BatchContextStoreFactory with its Prisma/Redis store implementations.
 import { Global, Module } from '@nestjs/common';
 
 import { BatchContextStoreFactory } from './batch-context-store.factory';

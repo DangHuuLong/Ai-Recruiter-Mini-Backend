@@ -1,3 +1,5 @@
+// Reads Redis URL and per-queue concurrency env vars into the queue config namespace.
+// Registered in ConfigModule.forRoot({ load: [...] }) in app.module.ts; consumed by queue.module.ts and the BullMQ processors to set concurrency.
 export const queueConfig = () => ({
   queue: {
     redisUrl: process.env.REDIS_URL,

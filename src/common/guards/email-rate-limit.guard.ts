@@ -1,3 +1,4 @@
+// No request.user here (unauthenticated route) — key by target email instead of org/IP.
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
@@ -12,11 +13,6 @@ type RequestWithEmailBody = {
   body?: { email?: string };
 };
 
-// Unauthenticated auth-flow endpoints (resend-verification, forgot-password)
-// have no request.user/organizationId to key on — key by the target email
-// instead, so a single victim address can't be email-bombed regardless of
-// how many IPs the caller rotates through. Reuses @RateLimit() metadata,
-// same opt-in-per-route shape as EnterpriseRateLimitGuard/PublicRateLimitGuard.
 @Injectable()
 export class EmailRateLimitGuard implements CanActivate {
   constructor(
@@ -25,6 +21,7 @@ export class EmailRateLimitGuard implements CanActivate {
     private readonly reflector: Reflector,
   ) {}
 
+  // Applied to unauthenticated auth routes (e.g. signup/forgot-password) tagged with @RateLimit(); enforces per-email hourly caps via Redis.
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const options = this.reflector.get<RateLimitOptions | undefined>(RATE_LIMIT_KEY, context.getHandler());
 

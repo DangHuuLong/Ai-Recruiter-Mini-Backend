@@ -1,3 +1,4 @@
+// Integration tests hitting a live AI service; gated by RUN_AI_INTEGRATION_TESTS.
 import { beforeAll, describe, expect, it } from '@jest/globals';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';

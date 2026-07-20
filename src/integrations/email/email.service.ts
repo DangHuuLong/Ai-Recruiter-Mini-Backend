@@ -1,3 +1,4 @@
+// Sends email via SMTP (nodemailer); no-ops silently when SMTP env vars aren't configured.
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
@@ -10,6 +11,7 @@ export class EmailService {
 
   constructor(private readonly configService: ConfigService) {}
 
+  // Lazily builds and caches the nodemailer transporter from SMTP config; returns null when SMTP isn't configured, used by send().
   private getTransporter(): Transporter | null {
     if (this.transporter) {
       return this.transporter;
@@ -34,6 +36,7 @@ export class EmailService {
     return this.transporter;
   }
 
+  // Sends a transactional email (verification/reset/batch-completed) via the SMTP transporter; called from auth and notify.processor.ts flows.
   async send(to: string, message: { subject: string; html: string }): Promise<void> {
     const transporter = this.getTransporter();
     const from = this.configService.get<string>('email.from') ?? 'no-reply@ai-recruiter-mini.local';
@@ -53,15 +56,12 @@ export class EmailService {
         html: message.html,
       });
     } catch (error) {
-      // Delivery failures (bad SMTP credentials, network issues, etc.) must not
-      // fail the caller's request — e.g. organization registration already
-      // committed its Organization/User rows before sending the verification
-      // email, and the user can always retry via POST /auth/resend-verification.
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to send email to ${to} (subject: ${message.subject}): ${reason}`);
     }
   }
 
+  // Returns the frontend base URL used by callers to build verification/reset links embedded in emails.
   getFrontendUrl(): string {
     return this.configService.get<string>('email.frontendUrl') ?? 'http://localhost:3001';
   }

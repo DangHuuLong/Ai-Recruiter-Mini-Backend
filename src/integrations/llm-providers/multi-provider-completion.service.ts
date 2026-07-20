@@ -1,3 +1,5 @@
+// Pools GPT/Groq/Cerebras (OpenAI-compatible chat APIs) behind one client,
+// falling back across providers on failure and continuing truncated responses.
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -32,20 +34,12 @@ interface CompletionResult {
   provider: string;
 }
 
-// Pools GPT/Groq/Cerebras (all OpenAI-compatible chat completion APIs)
-// behind one client. Two resilience mechanisms, both driven by rotating
-// through the combined set of provider keys:
-//  - fallback: if a call throws (auth/rate-limit/network), try the next
-//    configured provider.
-//  - continuation: if a response is cut off (finish_reason=length), resend
-//    the conversation with a "continue" instruction — using whichever
-//    provider/key comes up next in rotation — until it finishes naturally
-//    or MAX_CONTINUATIONS is hit.
 @Injectable()
 export class MultiProviderCompletionService {
   private readonly logger = new Logger(MultiProviderCompletionService.name);
   private readonly pools: ProviderPool[];
 
+  // Builds one KeyRotator-backed pool per provider (GPT/Groq/Cerebras) and drops any with no configured keys.
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
@@ -73,6 +67,7 @@ export class MultiProviderCompletionService {
     this.pools = candidates.filter((pool) => pool.rotator.hasKeys());
   }
 
+  // Makes a single chat-completion request against one provider pool; used by callWithFallback.
   private async callOnce(
     pool: ProviderPool,
     messages: ChatMessage[],
@@ -90,12 +85,10 @@ export class MultiProviderCompletionService {
     return { text: choice.message.content ?? '', finishReason: choice.finish_reason, provider: pool.name };
   }
 
+  // Retries callOnce across all provider pools/keys until one succeeds; used by generate().
   private async callWithFallback(messages: ChatMessage[], maxTokens?: number): Promise<CompletionResult> {
     let lastError: unknown;
     for (const pool of this.pools) {
-      // Retry every key in this provider's pool before giving up on the
-      // provider entirely — a single dead/expired key must not waste the
-      // other 3 (confirmed with a real dead GROQ_API_KEY_1 during testing).
       for (let attempt = 0; attempt < pool.rotator.size(); attempt++) {
         try {
           return await this.callOnce(pool, messages, maxTokens);
@@ -109,10 +102,7 @@ export class MultiProviderCompletionService {
     throw new Error(`All completion providers failed: ${String(lastError)}`);
   }
 
-  /**
-   * Generates text, automatically continuing across providers/keys if a response gets cut off mid-way.
-   * `maxTokens` caps each individual call — pass a small value to force continuation on a long answer.
-   */
+  // Called by job-description-classifier.service.ts and interview-question-generator.service.ts to get an LLM completion, auto-continuing truncated responses.
   async generate(prompt: string, maxTokens?: number): Promise<string> {
     if (this.pools.length === 0) {
       throw new Error('No completion providers configured (GPT_API_KEY_1..4 / GROQ_API_KEY_1..4 / CEREBRAS_API_KEY_1..4)');

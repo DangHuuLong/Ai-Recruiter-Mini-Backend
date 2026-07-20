@@ -1,3 +1,4 @@
+// Creates and manages enterprise scoring batches: upload URLs, file/text/structured intake, queueing parse jobs, and matrix/CSV/cell reads.
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -40,6 +41,7 @@ export class ScoringBatchesService {
     @InjectQueue(QUEUE_NAMES.JD_PARSE) private readonly jdParseQueue: Queue<JdParseJobData>,
   ) {}
 
+  // Called by ScoringBatchesController.createUploadUrls — issues pre-signed upload URLs for files the client wants to include in a batch.
   async createUploadUrls(dto: CreateUploadUrlsDto, organizationId: string) {
     const maxFiles = this.configService.get<number>('ENTERPRISE_MAX_FILES_PER_BATCH') ?? 2000;
     const maxFileSizeMb =
@@ -81,7 +83,7 @@ export class ScoringBatchesService {
     );
   }
 
-  // Client declares the checksum before uploading, so it can't be trusted as-is.
+  // Called from create()'s file-asset creation step — re-hashes the uploaded bytes to confirm they match the client-declared checksum.
   private async verifyChecksum(fileKey: string, bucket: string, declaredChecksum: string) {
     const buffer = await this.storageService.downloadFile(fileKey, bucket);
     const actualChecksum = computeSha256Hex(buffer);
@@ -91,6 +93,7 @@ export class ScoringBatchesService {
     }
   }
 
+  // Called by ScoringBatchesController.create — persists the batch and its resume/JD items, then enqueues resume-parse/jd-parse jobs on BullMQ.
   async create(dto: CreateScoringBatchDto, organizationId: string, userId: string) {
     const resumeFiles = dto.resumeFiles ?? [];
     const resumeTexts = dto.resumeTexts ?? [];
@@ -360,6 +363,7 @@ export class ScoringBatchesService {
     };
   }
 
+  // Called by ScoringBatchesController.getStatus — returns the batch's current status and progress for client polling.
   async getStatus(batchId: string, organizationId: string) {
     const batch = await this.ensureBatchExists(batchId, organizationId);
 
@@ -374,6 +378,7 @@ export class ScoringBatchesService {
     };
   }
 
+  // Called by ScoringBatchesController.getMatrix — builds the paginated resume x JD score grid, optionally with top-N rankings.
   async getMatrix(batchId: string, organizationId: string, query: MatrixQueryDto) {
     const batch = await this.ensureBatchExists(batchId, organizationId);
 
@@ -469,6 +474,7 @@ export class ScoringBatchesService {
     };
   }
 
+  // Called by ScoringBatchesController.getCell — fetches the full score detail for one resume x JD pair, scoped to the batch/org.
   async getCell(batchId: string, resumeItemId: string, jdItemId: string, organizationId: string) {
     await this.ensureBatchExists(batchId, organizationId);
 
@@ -483,6 +489,7 @@ export class ScoringBatchesService {
     return cell;
   }
 
+  // Called by ScoringBatchesController.getSkillGapSummary — tallies MISSING skills across completed results to surface the most common gaps.
   async getSkillGapSummary(batchId: string, organizationId: string, query: SkillGapQueryDto) {
     await this.ensureBatchExists(batchId, organizationId);
 
@@ -513,6 +520,7 @@ export class ScoringBatchesService {
     return { batchId, totalResultsConsidered: results.length, missingSkills };
   }
 
+  // Called by ScoringBatchesController.exportCsv — builds a CSV of candidates x job descriptions with overall scores for download.
   async exportCsv(batchId: string, organizationId: string): Promise<string> {
     await this.ensureBatchExists(batchId, organizationId);
 
@@ -556,6 +564,7 @@ export class ScoringBatchesService {
     return lines.join('\n');
   }
 
+  // Called by ScoringBatchesController.cancel — marks a non-terminal batch as CANCELLED, stopping further processing.
   async cancel(batchId: string, organizationId: string) {
     const batch = await this.ensureBatchExists(batchId, organizationId);
     const terminalStatuses = new Set(['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'CANCELLED']);
@@ -572,6 +581,7 @@ export class ScoringBatchesService {
     return { batchId, status: 'CANCELLED' as const };
   }
 
+  // Shared by nearly every method above — loads an org-scoped ScoringBatch or throws a 404.
   private async ensureBatchExists(batchId: string, organizationId: string): Promise<ScoringBatch> {
     const batch = await this.prisma.scoringBatch.findFirst({ where: { id: batchId, organizationId } });
 
@@ -582,6 +592,7 @@ export class ScoringBatchesService {
     return batch;
   }
 
+  // Called by getStatus() and getMatrix() — derives the completed/failed/percent progress shape from raw batch counters.
   private buildProgress(batch: ScoringBatch) {
     return {
       totalCvCount: batch.totalCvCount,
@@ -596,6 +607,7 @@ export class ScoringBatchesService {
     };
   }
 
+  // Called by getMatrix() when topN is requested — ranks a resume's scored JD cells and returns the top N.
   private topJdsByScore(
     cells: Array<{ jdItemId: string; overallScore: number | null }>,
     topN: number,
@@ -608,6 +620,7 @@ export class ScoringBatchesService {
   }
 }
 
+// Called by exportCsv() — quotes/escapes a CSV field value per RFC 4180 rules.
 function csvEscape(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
     return `"${value.replace(/"/g, '""')}"`;

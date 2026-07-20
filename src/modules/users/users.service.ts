@@ -1,3 +1,4 @@
+// CRUD logic for organization users, including admin-count safety checks and self-modification restrictions.
 import { Injectable } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 
@@ -12,6 +13,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Called by UsersController.create — hashes the password and creates a new org-scoped user, rejecting duplicate emails.
   async create(createUserDto: CreateUserDto, organizationId: string) {
     const email = createUserDto.email.toLowerCase().trim();
 
@@ -38,6 +40,7 @@ export class UsersService {
     });
   }
 
+  // Called by UsersController.findAll — builds an org-scoped, filtered/searched Prisma query and returns paginated users.
   async findAll(query: UserQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
@@ -74,6 +77,7 @@ export class UsersService {
     };
   }
 
+  // Called by UsersController.update — applies partial updates, blocking self role-change/deactivation and removal of the last active admin.
   async update(id: string, dto: UpdateUserDto, organizationId: string, currentUserId: string) {
     const target = await this.prisma.user.findFirst({
       where: { id, organizationId },
@@ -109,6 +113,7 @@ export class UsersService {
     });
   }
 
+  // Called by the auth module's login flow — looks up an active user by email to verify credentials.
   async findActiveByEmail(email: string) {
     return this.prisma.user.findFirst({
       where: {
@@ -128,6 +133,7 @@ export class UsersService {
     });
   }
 
+  // Reused across create/findAll/update — the Prisma select shape that excludes passwordHash from API responses.
   private getUserSelect(): Prisma.UserSelect {
     return {
       id: true,

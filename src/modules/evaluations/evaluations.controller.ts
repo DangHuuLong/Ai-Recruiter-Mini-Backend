@@ -1,3 +1,4 @@
+// Controller for /evaluations and /applications/:id/evaluations — create, list, retry, and view evaluation details.
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
@@ -15,6 +16,7 @@ import type { AuthUser } from '../../common/types/auth-user.type';
 export class EvaluationsController {
   constructor(private readonly evaluationsService: EvaluationsService) {}
 
+  // POST /evaluations — kicks off AI scoring of an application against a config and persists the result.
   @Post('evaluations')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(
@@ -33,6 +35,7 @@ export class EvaluationsController {
     };
   }
 
+  // GET /evaluations — paginated, filtered, searchable list of evaluations in the org.
   @Get('evaluations')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: EvaluationQueryDto, @CurrentUser() currentUser: AuthUser) {
@@ -45,6 +48,7 @@ export class EvaluationsController {
     };
   }
 
+  // GET /evaluations/:id — fetches a single evaluation with its full related data.
   @Get('evaluations/:id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -56,6 +60,7 @@ export class EvaluationsController {
     };
   }
 
+  // GET /applications/:id/evaluations — lists all evaluations run against a given application.
   @Get('applications/:id/evaluations')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findByApplicationId(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -70,6 +75,7 @@ export class EvaluationsController {
     };
   }
 
+  // GET /evaluations/:id/breakdown — returns the per-criterion scores that make up the overall score.
   @Get('evaluations/:id/breakdown')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findBreakdown(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -81,6 +87,7 @@ export class EvaluationsController {
     };
   }
 
+  // GET /evaluations/:id/skills — returns matched/missing skills detected during scoring.
   @Get('evaluations/:id/skills')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findSkills(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -92,6 +99,7 @@ export class EvaluationsController {
     };
   }
 
+  // GET /evaluations/:id/interview-questions — returns the interview questions generated for this evaluation.
   @Get('evaluations/:id/interview-questions')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findInterviewQuestions(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -106,6 +114,7 @@ export class EvaluationsController {
     };
   }
 
+  // GET /evaluations/:id/evidence — returns the supporting evidence map behind the scores and skills.
   @Get('evaluations/:id/evidence')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findEvidence(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -117,6 +126,7 @@ export class EvaluationsController {
     };
   }
 
+  // POST /evaluations/:id/retry — re-runs AI scoring for a failed/completed evaluation, clearing prior results first.
   @Post('evaluations/:id/retry')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async retry(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {

@@ -1,3 +1,4 @@
+// Registers BullMQ queues/processors and the batch progress coordinator.
 import { BullModule } from '@nestjs/bullmq';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
@@ -21,9 +22,6 @@ import { JobDescriptionsModule } from '../modules/job-descriptions/job-descripti
       useFactory: (configService: ConfigService) => ({
         connection: {
           url: configService.get<string>('queue.redisUrl'),
-          // BullMQ requires this — it cannot reuse RedisService's existing
-          // ioredis client, which doesn't set this option. Same Redis
-          // deployment, separate connection.
           maxRetriesPerRequest: null,
         },
       }),

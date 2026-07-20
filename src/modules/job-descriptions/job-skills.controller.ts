@@ -1,3 +1,4 @@
+// REST controller for JobSkill CRUD, nested under job-descriptions/:id/skills and job-skills/:skillId.
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
@@ -15,6 +16,7 @@ import type { AuthUser } from '../../common/types/auth-user.type';
 export class JobSkillsController {
   constructor(private readonly jobSkillsService: JobSkillsService) {}
 
+  // GET /job-descriptions/:id/skills — lists JobSkill rows for a JD.
   @Get('job-descriptions/:id/skills')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findByJobDescription(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -29,6 +31,7 @@ export class JobSkillsController {
     };
   }
 
+  // POST /job-descriptions/:id/skills — manually adds one JobSkill to a JD.
   @Post('job-descriptions/:id/skills')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(
@@ -48,6 +51,7 @@ export class JobSkillsController {
     };
   }
 
+  // PATCH /job-skills/:skillId — partial update of a JobSkill.
   @Patch('job-skills/:skillId')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(
@@ -67,6 +71,7 @@ export class JobSkillsController {
     };
   }
 
+  // DELETE /job-skills/:skillId — hard-deletes a JobSkill.
   @Delete('job-skills/:skillId')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async remove(@Param('skillId') skillId: string, @CurrentUser() currentUser: AuthUser) {

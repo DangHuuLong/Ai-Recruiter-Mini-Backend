@@ -1,3 +1,4 @@
+// Reference to an already-uploaded resume file to include in a scoring batch.
 import { IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 export class ResumeFileRefDto {

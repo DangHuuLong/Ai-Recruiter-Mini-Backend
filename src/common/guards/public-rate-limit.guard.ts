@@ -1,3 +1,5 @@
+// Keyed by IP + session id together — IP alone is too coarse (shared NAT),
+// session id alone is trivially reset by clearing client storage.
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -7,8 +9,6 @@ import { RedisService } from '../../integrations/redis/redis.service';
 
 const RATE_LIMIT_WINDOW_SECONDS = 3600;
 
-// Keyed by IP + session id together — IP alone is too coarse (shared NAT),
-// session id alone is trivially reset by clearing client storage.
 @Injectable()
 export class PublicRateLimitGuard implements CanActivate {
   constructor(
@@ -16,6 +16,7 @@ export class PublicRateLimitGuard implements CanActivate {
     private readonly configService: ConfigService,
   ) {}
 
+  // Applied to public/anonymous endpoints; enforces per-IP+session hourly caps via Redis to stop abuse without login.
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RequestWithAnonSession>();
     const maxPerHour =

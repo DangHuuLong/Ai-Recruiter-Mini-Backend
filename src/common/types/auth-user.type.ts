@@ -1,3 +1,4 @@
+// Shape of the authenticated user attached to a request, and the JWT payload it's derived from.
 import { UserRole } from '@prisma/client';
 
 export type AuthUser = {

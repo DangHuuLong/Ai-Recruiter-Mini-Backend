@@ -1,3 +1,4 @@
+// Query params for GET /job-descriptions — pagination, free-text search, and sort options.
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 

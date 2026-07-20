@@ -1,3 +1,4 @@
+// Service for the shared InterviewQuestionEntry bank: CRUD, embedding-backed semantic search with hard taxonomy filters, and AI-fallback generation on thin results.
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, QuestionQualityGateStatus } from '@prisma/client';
@@ -41,9 +42,8 @@ export class InterviewQuestionsService {
     private readonly configService: ConfigService,
   ) {}
 
+  // Called by createBulk, searchOrGenerate, and InterviewQuestionsController.create — embeds and persists a new InterviewQuestionEntry.
   async create(dto: CreateInterviewQuestionDto) {
-    // Embed before touching the DB — a question with no embedding is
-    // useless for retrieval, so a failed embed must not leave a row behind.
     const embedding = await this.embeddingService.embed(dto.questionText);
 
     return this.prisma.$transaction(async (tx) => {
@@ -62,9 +62,6 @@ export class InterviewQuestionsService {
           questionType: dto.questionType,
           rubric: dto.rubric,
           source: dto.source,
-          // A human (DEV role) typed this in directly, so it's reviewed by
-          // definition — defaults to APPROVED here, unlike the future
-          // AI-fallback write-back path which must start at PENDING_REVIEW.
           qualityGateStatus: dto.qualityGateStatus ?? QuestionQualityGateStatus.APPROVED,
         },
       });
@@ -75,13 +72,7 @@ export class InterviewQuestionsService {
     });
   }
 
-  /**
-   * Creates each item independently (sequential, not Promise.all — avoids
-   * firing a burst of concurrent Gemini calls that would just trip rate
-   * limits faster). One bad item doesn't block the rest, matching the
-   * partial-failure philosophy already used for ScoringBatch: the caller
-   * gets a per-item result list rather than an all-or-nothing failure.
-   */
+  // Called by InterviewQuestionsController.createBulk — runs create() per item, collecting per-index success/failure results.
   async createBulk(items: CreateInterviewQuestionDto[]) {
     const results: Array<
       { index: number; success: true; data: Awaited<ReturnType<InterviewQuestionsService['create']>> }
@@ -104,6 +95,7 @@ export class InterviewQuestionsService {
     return results;
   }
 
+  // Called by InterviewQuestionsController.update — partial update that re-embeds only if questionText changed.
   async update(id: string, dto: UpdateInterviewQuestionDto) {
     const existing = await this.ensureExists(id);
     const newEmbedding =
@@ -139,7 +131,7 @@ export class InterviewQuestionsService {
     });
   }
 
-  /** Regenerates the embedding without changing any other field — for backfills after an embedding model change. */
+  // Called by InterviewQuestionsController.reembed — recomputes the vector embedding for an existing question's text.
   async reembed(id: string) {
     const existing = await this.ensureExists(id);
     const embedding = await this.embeddingService.embed(existing.questionText);
@@ -147,23 +139,15 @@ export class InterviewQuestionsService {
     return this.ensureExists(id);
   }
 
+  // Called by InterviewQuestionsController.remove — hard-deletes an InterviewQuestionEntry after existence check.
   async remove(id: string) {
     await this.ensureExists(id);
     await this.prisma.interviewQuestionEntry.delete({ where: { id } });
     return { id, deleted: true };
   }
 
-  /**
-   * Hard-filters on occupationFamily + specialization (+ enablers overlap if
-   * given) first, then ranks the filtered set by pgvector cosine similarity —
-   * "filter cứng trước, rank semantic sau" from PLAN.md Phase 7. Only
-   * APPROVED questions are eligible; PENDING_REVIEW/REJECTED never surface
-   * here. Returns raw similarity scores (not a pass/fail against a
-   * threshold) — the threshold itself hasn't been decided yet, this is what
-   * it gets decided from.
-   */
+  // Called by InterviewQuestionsController.search and by searchOrGenerate — pgvector similarity search filtered by taxonomy fields.
   async search(dto: SearchInterviewQuestionsDto): Promise<SearchResultRow[]> {
-    // Distinguishes "valid specialization, no data yet" (keep returning empty) from a typo'd one.
     this.ensureKnownSpecialization(dto.occupationFamily, dto.specialization);
 
     const queryEmbedding = await this.embeddingService.embed(dto.queryText);
@@ -198,7 +182,7 @@ export class InterviewQuestionsService {
     `;
   }
 
-  // Wraps search() with an AI-generation fallback for thin/off-topic results — new questions are written back as PENDING_REVIEW.
+  // Called by InterviewQuestionsController.searchOrGenerate — falls back to InterviewQuestionGeneratorService when results are thin/off-topic.
   async searchOrGenerate(dto: SearchInterviewQuestionsDto): Promise<SearchOrGenerateResult> {
     const existing = await this.search(dto);
 
@@ -219,22 +203,17 @@ export class InterviewQuestionsService {
       count: generateCount,
     });
 
-    // Sequential, not Promise.all — same reasoning as createBulk: avoids a
-    // burst of concurrent Gemini embedding calls, and one bad item shouldn't
-    // stop the rest from being written back.
     const generated: SearchOrGenerateResult['generated'] = [];
     for (const candidate of candidates) {
       try {
         generated.push(await this.create(candidate));
-      } catch {
-        // create() already logs its own failures upstream (embedding call);
-        // skip this item and keep going rather than losing the whole batch.
-      }
+      } catch {}
     }
 
     return { existing, generated };
   }
 
+  // Called by InterviewQuestionsController.findAll — paginated listing with taxonomy/status filters.
   async findAll(query: InterviewQuestionQueryDto) {
     const where = {
       occupationFamily: query.occupationFamily,
@@ -263,10 +242,12 @@ export class InterviewQuestionsService {
     };
   }
 
+  // Called by InterviewQuestionsController.findOne — thin wrapper over ensureExists.
   async findOne(id: string) {
     return this.ensureExists(id);
   }
 
+  // Shared existence check used by findOne, update, reembed, and remove; throws 404 AppException when missing.
   private async ensureExists(id: string) {
     const entry = await this.prisma.interviewQuestionEntry.findUnique({ where: { id } });
     if (!entry) {
@@ -275,6 +256,7 @@ export class InterviewQuestionsService {
     return entry;
   }
 
+  // Called by search() — validates specialization against INTERVIEW_QUESTION_TAXONOMY before running the DB query.
   private ensureKnownSpecialization(occupationFamily: string, specialization: string): void {
     const taxonomyEntry = INTERVIEW_QUESTION_TAXONOMY.find(
       (entry) => entry.occupationFamily === occupationFamily,
@@ -288,7 +270,7 @@ export class InterviewQuestionsService {
     }
   }
 
-  // embedding is Unsupported("vector(768)") — writes always need raw SQL.
+  // Called by create() and update()/reembed() — writes the pgvector embedding column via raw SQL.
   private async setEmbedding(
     client: PrismaService | Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
     id: string,

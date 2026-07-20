@@ -1,3 +1,4 @@
+// Body for POST /scoring-batches — accepts mixed resume/JD inputs (file refs, raw text, structured) plus notification settings.
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,

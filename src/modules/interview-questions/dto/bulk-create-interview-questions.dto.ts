@@ -1,3 +1,4 @@
+// Body for POST /interview-questions/bulk — wraps a bounded array of CreateInterviewQuestionDto items.
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, ValidateNested } from 'class-validator';
 

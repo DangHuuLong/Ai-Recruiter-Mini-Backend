@@ -1,3 +1,4 @@
+// Structured (pre-parsed) job description input for a scoring batch, including skills, responsibilities, and requirements.
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,

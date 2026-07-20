@@ -1,8 +1,8 @@
-import { OccupationFamily } from '@prisma/client';
-
 // Reference vocabulary for InterviewQuestionEntry.specialization/enablers/businessContext.
 // Not DB-enforced (those fields are free-form strings) — these are the example values
 // seed data and future CV/JD classifiers should converge on. See PLAN.md Phase 7.
+import { OccupationFamily } from '@prisma/client';
+
 export interface OccupationTaxonomyEntry {
   occupationFamily: OccupationFamily;
   specializations: string[];

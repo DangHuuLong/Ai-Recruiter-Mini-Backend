@@ -1,3 +1,4 @@
+// Validates the Bearer JWT, loads the active verified user, and attaches it to the request.
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -20,6 +21,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly prisma: PrismaService,
   ) {}
 
+  // Wired into protected controllers/routes; verifies the Bearer token and attaches AuthUser for CurrentUser/RolesGuard downstream.
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RequestWithUser>();
     const token = this.extractBearerToken(request.headers.authorization);
@@ -68,6 +70,7 @@ export class JwtAuthGuard implements CanActivate {
     return true;
   }
 
+  // Parses the "Bearer <token>" header value; called by canActivate() before JWT verification.
   private extractBearerToken(authorization: string | undefined): string | null {
     if (!authorization) {
       return null;

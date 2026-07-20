@@ -1,3 +1,4 @@
+// Controller for /evaluation-configs — create/list/update/delete scoring criteria configs.
 import {
   Body,
   Controller,
@@ -29,6 +30,7 @@ import type { AuthUser } from '../../common/types/auth-user.type';
 export class EvaluationConfigsController {
   constructor(private readonly evaluationConfigsService: EvaluationConfigsService) {}
 
+  // POST /evaluation-configs — creates a scoring criteria config later used by ScoringService to weight evaluations.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(@Body() createDto: CreateEvaluationConfigDto, @CurrentUser() currentUser: AuthUser) {
@@ -44,6 +46,7 @@ export class EvaluationConfigsController {
     };
   }
 
+  // GET /evaluation-configs — paginated list of configs, optionally filtered by job description.
   @Get()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: EvaluationConfigQueryDto, @CurrentUser() currentUser: AuthUser) {
@@ -56,6 +59,7 @@ export class EvaluationConfigsController {
     };
   }
 
+  // GET /evaluation-configs/:id — fetches a single evaluation config.
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -67,6 +71,7 @@ export class EvaluationConfigsController {
     };
   }
 
+  // PATCH /evaluation-configs/:id — updates a config's criteria/weights/default flag.
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(
@@ -82,6 +87,7 @@ export class EvaluationConfigsController {
     };
   }
 
+  // DELETE /evaluation-configs/:id — deletes a config; audit-logged via AuditLogInterceptor.
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   @UseInterceptors(AuditLogInterceptor)

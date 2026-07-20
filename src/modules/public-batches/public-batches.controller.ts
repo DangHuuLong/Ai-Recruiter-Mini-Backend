@@ -1,3 +1,4 @@
+// REST controller for anonymous/public scoring batches: signed upload URLs, batch creation, and status lookup.
 import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 
 import { CreatePublicBatchDto } from './dto/create-public-batch.dto';
@@ -10,6 +11,7 @@ import { CreateUploadUrlsDto } from '../scoring-batches/dto/create-upload-urls.d
 export class PublicBatchesController {
   constructor(private readonly publicBatchesService: PublicBatchesService) {}
 
+  // POST /public/batches/upload-urls — issues signed Supabase upload URLs for an anonymous session before batch creation.
   @Post('upload-urls')
   async createUploadUrls(
     @Body() dto: CreateUploadUrlsDto,
@@ -23,6 +25,7 @@ export class PublicBatchesController {
     };
   }
 
+  // POST /public/batches — rate-limited entry point that enqueues resume/JD parsing jobs into the RESUME_PARSE/JD_PARSE queues.
   @Post()
   @UseGuards(PublicRateLimitGuard)
   @HttpCode(202)
@@ -38,6 +41,7 @@ export class PublicBatchesController {
     };
   }
 
+  // GET /public/batches/:id — polls batch status/progress/results from the Redis-backed context store.
   @Get(':id')
   async findOne(
     @Param('id') id: string,

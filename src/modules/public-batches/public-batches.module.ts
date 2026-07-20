@@ -1,3 +1,4 @@
+// Nest module wiring for the Public Batches feature (controller, service, resume-parse/JD-parse BullMQ queues).
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 

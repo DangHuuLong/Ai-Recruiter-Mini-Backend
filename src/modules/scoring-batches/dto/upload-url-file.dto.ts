@@ -1,3 +1,4 @@
+// Describes a single file (name, type, size, checksum) requesting a pre-signed upload URL.
 import { IsInt, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 export class UploadUrlFileDto {

@@ -1,3 +1,4 @@
+// Wires the Gemini embedding service and multi-provider completion service.
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 

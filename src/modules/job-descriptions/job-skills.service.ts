@@ -1,3 +1,4 @@
+// Service for JobSkill CRUD and reconciling a job description's skills against freshly AI-parsed data.
 import { Injectable } from '@nestjs/common';
 import { JobSkillType } from '@prisma/client';
 
@@ -11,6 +12,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 export class JobSkillsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Called by JobSkillsController.findByJobDescription — lists a JD's skills, sorted by type/core/name.
   async findByJobDescription(jobDescriptionId: string, organizationId: string) {
     await this.ensureActiveJobDescription(jobDescriptionId, organizationId);
 
@@ -20,6 +22,7 @@ export class JobSkillsService {
     });
   }
 
+  // Called by JobSkillsController.create — manually adds one JobSkill after uniqueness/normalization checks.
   async create(jobDescriptionId: string, createJobSkillDto: CreateJobSkillDto, organizationId: string) {
     await this.ensureActiveJobDescription(jobDescriptionId, organizationId);
 
@@ -41,6 +44,7 @@ export class JobSkillsService {
     });
   }
 
+  // Called by JobSkillsController.update — partial update, re-checking normalized-name uniqueness within the JD.
   async update(skillId: string, updateJobSkillDto: UpdateJobSkillDto, organizationId: string) {
     const existingSkill = await this.ensureJobSkillExists(skillId, organizationId);
     await this.ensureActiveJobDescription(existingSkill.jobDescriptionId, organizationId);
@@ -72,6 +76,7 @@ export class JobSkillsService {
     });
   }
 
+  // Called by JobSkillsController.remove — hard-deletes a JobSkill after existence/ownership checks.
   async remove(skillId: string, organizationId: string) {
     const existingSkill = await this.ensureJobSkillExists(skillId, organizationId);
     await this.ensureActiveJobDescription(existingSkill.jobDescriptionId, organizationId);
@@ -81,6 +86,7 @@ export class JobSkillsService {
     return { id: skillId, deleted: true };
   }
 
+  // Called by JobDescriptionsService.parse — reconciles a JD's skills with freshly AI-parsed data (upsert + prune stale rows).
   async syncFromParsedData(jobDescriptionId: string, parsedData: ParsedJobDescriptionData) {
     const parsedSkills = [
       ...this.mapParsedSkills(parsedData.required_skills ?? [], JobSkillType.REQUIRED),
@@ -125,6 +131,7 @@ export class JobSkillsService {
     });
   }
 
+  // Shared guard used by findByJobDescription/create/update/remove — confirms the parent JD is active and org-owned.
   private async ensureActiveJobDescription(jobDescriptionId: string, organizationId: string) {
     const jobDescription = await this.prisma.jobDescription.findFirst({
       where: { id: jobDescriptionId, isActive: true, organizationId },
@@ -138,6 +145,7 @@ export class JobSkillsService {
     return jobDescription;
   }
 
+  // Shared guard used by update/remove — fetches a JobSkill scoped to the org via its parent JD, or throws 404.
   private async ensureJobSkillExists(skillId: string, organizationId: string) {
     const jobSkill = await this.prisma.jobSkill.findFirst({
       where: { id: skillId, jobDescription: { organizationId } },
@@ -150,6 +158,7 @@ export class JobSkillsService {
     return jobSkill;
   }
 
+  // Called by create() and update() — rejects duplicate normalizedName+type skills within the same JD.
   private async ensureSkillIsUnique(
     jobDescriptionId: string,
     normalizedName: string,
@@ -171,6 +180,7 @@ export class JobSkillsService {
     }
   }
 
+  // Called by syncFromParsedData — maps AI-parsed skill objects into the JobSkill create/update shape.
   private mapParsedSkills(skills: ParsedJobSkill[], type: JobSkillType) {
     return skills
       .filter((skill) => skill.name)
@@ -183,6 +193,7 @@ export class JobSkillsService {
       }));
   }
 
+  // Called by syncFromParsedData — drops duplicate type+normalizedName entries from the AI-parsed skill list.
   private dedupeParsedSkills(
     skills: Array<{
       name: string;
@@ -205,6 +216,7 @@ export class JobSkillsService {
     return result;
   }
 
+  // Shared helper used across create/update/syncFromParsedData — lowercases/trims/collapses whitespace for name matching.
   private normalizeSkillName(value: string) {
     return value.trim().toLowerCase().replace(/\s+/g, ' ');
   }

@@ -1,7 +1,8 @@
+// Maps the camelCase structured-form DTO to the AI service's snake_case ParsedJobDescriptionData shape.
 import { JobDescriptionStructuredInputDto } from './dto/job-description-structured-input.dto';
 import { ParsedJobDescriptionData } from '../../common/types/ai-service.types';
 
-/** Maps the camelCase structured-form DTO to the AI service's snake_case ParsedJobDescriptionData shape. */
+// Called by ScoringBatchesService.create for jobDescriptionStructured inputs — skips AI parsing and seeds parsedData directly.
 export function mapStructuredJdToParsedData(
   input: JobDescriptionStructuredInputDto,
 ): ParsedJobDescriptionData {

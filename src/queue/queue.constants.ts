@@ -1,3 +1,4 @@
+// BullMQ queue name constants and the shared BatchTier type.
 export const QUEUE_NAMES = {
   RESUME_PARSE: 'resume-parse',
   JD_PARSE: 'jd-parse',

@@ -1,3 +1,4 @@
+// Query params for GET /audit-logs — pagination plus resource/actor filters.
 import { Transform } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 

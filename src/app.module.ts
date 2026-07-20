@@ -1,3 +1,4 @@
+// Root module: loads config, wires integrations/feature modules, and applies anonymous-session middleware.
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
@@ -77,6 +78,7 @@ import { QueueModule } from './queue/queue.module';
   ],
 })
 export class AppModule implements NestModule {
+  // Nest hook: applies AnonymousSessionMiddleware to the public/batches routes so unauthenticated callers get a session cookie.
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(AnonymousSessionMiddleware).forRoutes('public/batches');
   }

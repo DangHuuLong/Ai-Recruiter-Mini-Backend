@@ -1,3 +1,4 @@
+// Types describing uploaded resume files as they move from Multer through storage.
 export type UploadMimeType =
   | 'application/pdf'
   | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';

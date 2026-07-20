@@ -1,3 +1,4 @@
+// Global interceptor that wraps every controller return value into the standard {success, message, data} envelope.
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -9,6 +10,7 @@ export class TransformResponseInterceptor implements NestInterceptor<
   unknown,
   StandardResponse | ResponsePayload
 > {
+  // Registered globally in main.ts; normalizes every controller response into the {success, message, data} envelope.
   intercept(
     context: ExecutionContext,
     next: CallHandler,

@@ -1,3 +1,4 @@
+// Service for auth flows — registration, login, email verification, password reset, and JWT session issuance.
 import { Injectable } from '@nestjs/common';
 import { AuthTokenType, UserRole } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -32,6 +33,7 @@ export class AuthService {
     private readonly authTokenService: AuthTokenService,
   ) {}
 
+  // Called by AuthController.login() — verifies email/password and email-verified status, then issues a JWT session.
   async login(loginDto: LoginDto) {
     const user = await this.usersService.findActiveByEmail(loginDto.email);
 
@@ -52,6 +54,7 @@ export class AuthService {
     return this.issueSession(user);
   }
 
+  // Called by AuthController.registerOrganization() — creates the org and admin user in a transaction, then triggers verification email.
   async registerOrganization(dto: RegisterOrganizationDto) {
     const email = dto.adminEmail.toLowerCase().trim();
 
@@ -97,6 +100,7 @@ export class AuthService {
     };
   }
 
+  // Called by AuthController.verifyEmail() — marks the user's email verified via AuthTokenService and issues a session.
   async verifyEmail(dto: VerifyEmailDto) {
     const userId = await this.authTokenService.consumeToken(
       dto.token,
@@ -115,11 +119,10 @@ export class AuthService {
     return this.issueSession(user);
   }
 
+  // Called by AuthController.resendVerification() — re-issues a verification email without leaking whether the account exists.
   async resendVerification(dto: ResendVerificationDto) {
     const user = await this.usersService.findActiveByEmail(dto.email);
 
-    // Always respond with a generic message regardless of whether the email
-    // exists or is already verified — avoids leaking account existence.
     if (user && !user.emailVerifiedAt) {
       await this.authTokenService.issueEmailVerificationToken(user.id, user.email, user.fullName);
     }
@@ -127,6 +130,7 @@ export class AuthService {
     return { message: 'If the email exists and is not yet verified, a new verification email has been sent.' };
   }
 
+  // Called by AuthController.forgotPassword() — triggers a password reset email without leaking whether the account exists.
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.usersService.findActiveByEmail(dto.email);
 
@@ -137,6 +141,7 @@ export class AuthService {
     return { message: 'If the email exists, a password reset email has been sent.' };
   }
 
+  // Called by AuthController.resetPassword() — consumes the reset token via AuthTokenService and updates the password hash.
   async resetPassword(dto: ResetPasswordDto) {
     const userId = await this.authTokenService.consumeToken(
       dto.token,
@@ -157,6 +162,7 @@ export class AuthService {
     return { message: 'Password reset successful. Please log in with your new password.' };
   }
 
+  // Called by login()/verifyEmail() — signs a JWT access token and shapes the session response payload.
   private issueSession(user: {
     id: string;
     organizationId: string;
@@ -192,6 +198,7 @@ export class AuthService {
     };
   }
 
+  // Called by registerOrganization() — slugifies the org name and appends a numeric suffix until the slug is unique.
   private async resolveUniqueSlug(source: string): Promise<string> {
     const base = slugify(source) || 'org';
     let candidate = base;

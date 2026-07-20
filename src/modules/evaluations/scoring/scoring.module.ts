@@ -1,3 +1,4 @@
+// Global module wiring for ScoringResultMapperService (depends on InterviewQuestionsModule).
 import { Global, Module } from '@nestjs/common';
 
 import { ScoringResultMapperService } from './scoring.service';

@@ -1,3 +1,4 @@
+// REST controller for JobDescription CRUD, AI parsing, and parsed-data retrieval.
 import {
   Body,
   Controller,
@@ -29,6 +30,7 @@ import type { AuthUser } from '../../common/types/auth-user.type';
 export class JobDescriptionsController {
   constructor(private readonly jobDescriptionsService: JobDescriptionsService) {}
 
+  // POST /job-descriptions — creates a raw JobDescription record ahead of AI parsing.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(
@@ -47,6 +49,7 @@ export class JobDescriptionsController {
     };
   }
 
+  // GET /job-descriptions — paginated, org-scoped listing with search and sort.
   @Get()
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: JobDescriptionQueryDto, @CurrentUser() currentUser: AuthUser) {
@@ -59,6 +62,7 @@ export class JobDescriptionsController {
     };
   }
 
+  // GET /job-descriptions/:id — fetches a single org-scoped JobDescription.
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -73,6 +77,7 @@ export class JobDescriptionsController {
     };
   }
 
+  // POST /job-descriptions/:id/parse — triggers AI parsing and occupationFamily/specialization classification.
   @Post(':id/parse')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async parse(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -87,6 +92,7 @@ export class JobDescriptionsController {
     };
   }
 
+  // GET /job-descriptions/:id/parsed-data — returns the structured AI-parsed fields for a JobDescription.
   @Get(':id/parsed-data')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async getParsedData(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -101,6 +107,7 @@ export class JobDescriptionsController {
     };
   }
 
+  // PATCH /job-descriptions/:id — partial update, including manual occupationFamily/specialization override.
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(
@@ -120,6 +127,7 @@ export class JobDescriptionsController {
     };
   }
 
+  // DELETE /job-descriptions/:id — soft-deactivates the JD; audited via AuditLogInterceptor.
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   @UseInterceptors(AuditLogInterceptor)

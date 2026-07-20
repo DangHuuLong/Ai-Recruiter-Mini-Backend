@@ -1,3 +1,4 @@
+// REST controller for InterviewQuestionEntry admin CRUD, search, AI-fallback search-or-generate, and re-embedding (DEV role only).
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
@@ -19,6 +20,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 export class InterviewQuestionsController {
   constructor(private readonly interviewQuestionsService: InterviewQuestionsService) {}
 
+  // POST /interview-questions — manually authors a single InterviewQuestionEntry via InterviewQuestionsService.create.
   @Post()
   async create(@Body() createDto: CreateInterviewQuestionDto) {
     const question = await this.interviewQuestionsService.create(createDto);
@@ -29,6 +31,7 @@ export class InterviewQuestionsController {
     };
   }
 
+  // POST /interview-questions/bulk — creates up to 200 questions at once, reporting per-item success/failure.
   @Post('bulk')
   async createBulk(@Body() bulkDto: BulkCreateInterviewQuestionsDto) {
     const results = await this.interviewQuestionsService.createBulk(bulkDto.items);
@@ -40,6 +43,7 @@ export class InterviewQuestionsController {
     };
   }
 
+  // POST /interview-questions/search — semantic search only, no AI-fallback generation.
   @Post('search')
   async search(@Body() searchDto: SearchInterviewQuestionsDto) {
     const results = await this.interviewQuestionsService.search(searchDto);
@@ -50,7 +54,6 @@ export class InterviewQuestionsController {
     };
   }
 
-  // Side-effecting counterpart to /search — may call an LLM and write new PENDING_REVIEW rows.
   @Post('search-or-generate')
   @UseGuards(EnterpriseRateLimitGuard)
   @RateLimit({
@@ -58,6 +61,7 @@ export class InterviewQuestionsController {
     envVar: 'ENTERPRISE_RATE_LIMIT_MAX_QUESTION_SEARCHES_PER_HOUR',
     defaultMax: 100,
   })
+  // POST /interview-questions/search-or-generate — rate-limited endpoint that falls back to LLM generation when retrieval is thin.
   async searchOrGenerate(@Body() searchDto: SearchInterviewQuestionsDto) {
     const result = await this.interviewQuestionsService.searchOrGenerate(searchDto);
 
@@ -67,6 +71,7 @@ export class InterviewQuestionsController {
     };
   }
 
+  // GET /interview-questions — paginated listing with optional occupationFamily/questionType/qualityGateStatus filters.
   @Get()
   async findAll(@Query() query: InterviewQuestionQueryDto) {
     const result = await this.interviewQuestionsService.findAll(query);
@@ -78,6 +83,7 @@ export class InterviewQuestionsController {
     };
   }
 
+  // GET /interview-questions/:id — fetches a single question or 404s via InterviewQuestionsService.findOne.
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const question = await this.interviewQuestionsService.findOne(id);
@@ -88,6 +94,7 @@ export class InterviewQuestionsController {
     };
   }
 
+  // PATCH /interview-questions/:id — partial update; re-embeds the question if questionText changes.
   @Patch(':id')
   async update(@Param('id') id: string, @Body() updateDto: UpdateInterviewQuestionDto) {
     const question = await this.interviewQuestionsService.update(id, updateDto);
@@ -98,6 +105,7 @@ export class InterviewQuestionsController {
     };
   }
 
+  // POST /interview-questions/:id/reembed — recomputes and persists the vector embedding for an existing question.
   @Post(':id/reembed')
   async reembed(@Param('id') id: string) {
     const question = await this.interviewQuestionsService.reembed(id);
@@ -108,6 +116,7 @@ export class InterviewQuestionsController {
     };
   }
 
+  // DELETE /interview-questions/:id — hard-deletes an InterviewQuestionEntry.
   @Delete(':id')
   async remove(@Param('id') id: string) {
     const result = await this.interviewQuestionsService.remove(id);

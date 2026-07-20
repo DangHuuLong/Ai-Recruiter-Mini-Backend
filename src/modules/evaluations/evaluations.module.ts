@@ -1,3 +1,4 @@
+// Module wiring for the evaluations feature (controller + service, depends on AiModule).
 import { Module } from '@nestjs/common';
 
 import { EvaluationsController } from './evaluations.controller';

@@ -1,3 +1,4 @@
+// Body for POST /auth/reset-password — reset token plus the new password.
 import { IsString, MaxLength, MinLength } from 'class-validator';
 
 export class ResetPasswordDto {
