@@ -1,3 +1,4 @@
+// Controller for /applications and /candidates/:id/applications — create, list, update status, and view events.
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
@@ -17,6 +18,7 @@ import type { AuthUser } from '../../common/types/auth-user.type';
 export class ApplicationsController {
   constructor(private readonly applicationsService: ApplicationsService) {}
 
+  // POST /applications — links a candidate, resume, and job description into a new application.
   @Post('applications')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async create(
@@ -35,6 +37,7 @@ export class ApplicationsController {
     };
   }
 
+  // GET /applications — paginated, filtered list of applications for the current org.
   @Get('applications')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findAll(@Query() query: ApplicationQueryDto, @CurrentUser() currentUser: AuthUser) {
@@ -47,6 +50,7 @@ export class ApplicationsController {
     };
   }
 
+  // GET /applications/:id — fetches a single application with its related records.
   @Get('applications/:id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findOne(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -58,6 +62,7 @@ export class ApplicationsController {
     };
   }
 
+  // PATCH /applications/:id — updates editable fields (source, notes) on an application.
   @Patch('applications/:id')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER)
   async update(
@@ -77,6 +82,7 @@ export class ApplicationsController {
     };
   }
 
+  // PATCH /applications/:id/status — transitions application status and logs an event.
   @Patch('applications/:id/status')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async updateStatus(
@@ -96,6 +102,7 @@ export class ApplicationsController {
     };
   }
 
+  // GET /applications/:id/events — returns the audit trail of status changes for an application.
   @Get('applications/:id/events')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findEvents(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
@@ -107,6 +114,7 @@ export class ApplicationsController {
     };
   }
 
+  // GET /candidates/:id/applications — lists all applications submitted by a given candidate.
   @Get('candidates/:id/applications')
   @Roles(UserRole.ADMIN, UserRole.RECRUITER, UserRole.HIRING_MANAGER)
   async findByCandidateId(@Param('id') id: string, @CurrentUser() currentUser: AuthUser) {
