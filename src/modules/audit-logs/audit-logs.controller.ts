@@ -1,3 +1,4 @@
+// Controller for GET /audit-logs — admin-only listing of organization audit trail entries.
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
@@ -14,6 +15,7 @@ import type { AuthUser } from '../../common/types/auth-user.type';
 export class AuditLogsController {
   constructor(private readonly auditLogsService: AuditLogsService) {}
 
+  // GET /audit-logs — admin-only paginated, filtered view of the org's audit trail.
   @Get()
   @Roles(UserRole.ADMIN)
   async findAll(@Query() query: AuditLogQueryDto, @CurrentUser() currentUser: AuthUser) {
