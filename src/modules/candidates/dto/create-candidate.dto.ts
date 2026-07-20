@@ -1,3 +1,4 @@
+// Body for POST /candidates — candidate profile fields (name, contact, links, location).
 import { IsEmail, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 
 export class CreateCandidateDto {
