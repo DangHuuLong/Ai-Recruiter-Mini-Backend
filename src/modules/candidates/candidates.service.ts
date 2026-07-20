@@ -1,3 +1,4 @@
+// Service for candidates — create/update/list/delete, duplicate-email checks, and fetching related resumes.
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
@@ -12,6 +13,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 export class CandidatesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Called by CandidatesController.create() — rejects duplicate emails within the org, then creates the candidate.
   async create(createCandidateDto: CreateCandidateDto, organizationId: string) {
     if (createCandidateDto.primaryEmail) {
       const existingCandidate = await this.prisma.candidate.findFirst({
@@ -43,6 +45,7 @@ export class CandidatesService {
     });
   }
 
+  // Called by CandidatesController.update() — rejects duplicate emails (excluding self), then updates the candidate.
   async update(id: string, updateCandidateDto: UpdateCandidateDto, organizationId: string) {
     await ensureCandidateExists(this.prisma, id, organizationId);
 
@@ -79,6 +82,7 @@ export class CandidatesService {
     });
   }
 
+  // Called by CandidatesController.findAll() — builds search filters and returns a paginated page with resume counts.
   async findAll(query: CandidateQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
@@ -128,6 +132,7 @@ export class CandidatesService {
     };
   }
 
+  // Called by CandidatesController.findOne() — fetches a candidate scoped to the org, 404s if missing.
   async findOne(id: string, organizationId: string) {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id, organizationId },
@@ -147,6 +152,7 @@ export class CandidatesService {
     return candidate;
   }
 
+  // Called by CandidatesController.findResumesByCandidateId() — lists a candidate's resumes with their file assets.
   async findResumesByCandidateId(id: string, organizationId: string) {
     await ensureCandidateExists(this.prisma, id, organizationId);
 
@@ -176,6 +182,7 @@ export class CandidatesService {
     });
   }
 
+  // Called by CandidatesController.remove() — blocks deletion if resumes/applications exist, otherwise deletes the candidate.
   async remove(id: string, organizationId: string) {
     await ensureCandidateExists(this.prisma, id, organizationId);
 
