@@ -1,3 +1,6 @@
+// Opt-in per route via @AuditLog() — writes an AuditLog row after the handler resolves.
+// Runs as a method-level interceptor, seeing the raw controller return value before
+// TransformResponseInterceptor (registered globally in main.ts) wraps it.
 import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
@@ -14,10 +17,6 @@ type RequestWithAuditContext = {
   body?: unknown;
 };
 
-// Opt-in per route via @AuditLog() — mirrors RateLimit/EnterpriseRateLimitGuard.
-// Runs as a method-level interceptor, so it sees the raw controller return
-// value ({message, data}) — TransformResponseInterceptor wraps it afterward
-// since it's registered globally via app.useGlobalInterceptors() in main.ts.
 @Injectable()
 export class AuditLogInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditLogInterceptor.name);
@@ -27,6 +26,7 @@ export class AuditLogInterceptor implements NestInterceptor {
     private readonly prisma: PrismaService,
   ) {}
 
+  // Registered per-handler via @AuditLog(); fires writeLog() after the response resolves without blocking it.
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const options = this.reflector.get<AuditLogOptions | undefined>(AUDIT_LOG_KEY, context.getHandler());
 
@@ -43,6 +43,7 @@ export class AuditLogInterceptor implements NestInterceptor {
     );
   }
 
+  // Called by intercept() to persist an AuditLog row for the current request; failures are logged, not thrown.
   private async writeLog(options: AuditLogOptions, request: RequestWithAuditContext, result: unknown) {
     if (!request.user) {
       return;
