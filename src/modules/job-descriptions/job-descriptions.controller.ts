@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
+import { BulkDeactivateJobDescriptionsDto } from './dto/bulk-deactivate-job-descriptions.dto';
 import { CreateJobDescriptionDto } from './dto/create-job-description.dto';
 import { JobDescriptionQueryDto } from './dto/job-description-query.dto';
 import { UpdateJobDescriptionDto } from './dto/update-job-description.dto';
@@ -46,6 +47,26 @@ export class JobDescriptionsController {
     return {
       message: 'Job description created successfully',
       data: jobDescription,
+    };
+  }
+
+  // POST /job-descriptions/bulk-deactivate — deactivates multiple JDs, reporting per-id success/failure.
+  @Post('bulk-deactivate')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  @UseInterceptors(AuditLogInterceptor)
+  @AuditLog({ action: 'BULK_DEACTIVATE', resourceType: 'JobDescription' })
+  async deactivateBulk(
+    @Body() dto: BulkDeactivateJobDescriptionsDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    const results = await this.jobDescriptionsService.deactivateMany(
+      dto.ids,
+      currentUser.organizationId,
+    );
+
+    return {
+      message: 'Bulk job description deactivation completed',
+      data: results,
     };
   }
 

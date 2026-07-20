@@ -229,6 +229,25 @@ export class JobDescriptionsService {
     return this.prisma.jobDescription.update({ where: { id }, data: { isActive: false } });
   }
 
+  // Called by JobDescriptionsController.deactivateBulk() — runs deactivate() per id, collecting per-item success/failure results.
+  async deactivateMany(ids: string[], organizationId: string) {
+    const results: Array<
+      { id: string; success: true; data: Awaited<ReturnType<JobDescriptionsService['deactivate']>> }
+      | { id: string; success: false; error: string }
+    > = [];
+
+    for (const id of ids) {
+      try {
+        const data = await this.deactivate(id, organizationId);
+        results.push({ id, success: true, data });
+      } catch (error) {
+        results.push({ id, success: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
+    return results;
+  }
+
   // Called by parse()'s catch block to normalize the error into a persisted parsingError message.
   private getParsingErrorMessage(error: unknown): string {
     if (error instanceof AppException) return error.message;

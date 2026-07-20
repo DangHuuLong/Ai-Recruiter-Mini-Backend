@@ -120,6 +120,25 @@ export class EvaluationConfigsService {
     return { id, deleted: true };
   }
 
+  // Called by EvaluationConfigsController.removeBulk() — runs remove() per id, collecting per-item success/failure results.
+  async removeMany(ids: string[], organizationId: string) {
+    const results: Array<
+      { id: string; success: true; data: Awaited<ReturnType<EvaluationConfigsService['remove']>> }
+      | { id: string; success: false; error: string }
+    > = [];
+
+    for (const id of ids) {
+      try {
+        const data = await this.remove(id, organizationId);
+        results.push({ id, success: true, data });
+      } catch (error) {
+        results.push({ id, success: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
+    return results;
+  }
+
   // Called by findOne()/update()/remove() to load a config scoped to the org or throw a 404.
   private async ensureExists(id: string, organizationId: string) {
     const config = await this.prisma.evaluationConfig.findFirst({ where: { id, organizationId } });
