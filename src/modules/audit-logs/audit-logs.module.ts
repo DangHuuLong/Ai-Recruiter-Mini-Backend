@@ -1,3 +1,4 @@
+// Module wiring for the audit logs feature (controller + service).
 import { Module } from '@nestjs/common';
 
 import { AuditLogsController } from './audit-logs.controller';
