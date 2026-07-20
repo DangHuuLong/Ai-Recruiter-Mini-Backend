@@ -1,3 +1,4 @@
+// Service for job applications — create/update/list, status transitions with event logging, and lookups by candidate.
 import { Injectable } from '@nestjs/common';
 import { ApplicationStatus, Prisma } from '@prisma/client';
 
@@ -15,6 +16,7 @@ const APPLICATION_EVENT_CREATED = 'APPLICATION_CREATED';
 export class ApplicationsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Called by ApplicationsController.create() — validates relations, then creates the application and its CREATED event in a transaction.
   async create(
     createApplicationDto: CreateApplicationDto,
     currentUserId: string,
@@ -60,6 +62,7 @@ export class ApplicationsService {
     });
   }
 
+  // Called by ApplicationsController.findAll() — builds filters/search from query params and returns a paginated page.
   async findAll(query: ApplicationQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
@@ -132,6 +135,7 @@ export class ApplicationsService {
     };
   }
 
+  // Called by ApplicationsController.findOne() and updateStatus() to reload the full record after a no-op status change.
   async findOne(id: string, organizationId: string) {
     const application = await this.prisma.application.findFirst({
       where: { id, organizationId },
@@ -145,6 +149,7 @@ export class ApplicationsService {
     return application;
   }
 
+  // Called by ApplicationsController.update() — patches source/notes on an existing application.
   async update(id: string, updateApplicationDto: UpdateApplicationDto, organizationId: string) {
     await this.ensureApplicationExists(id, organizationId);
 
@@ -159,6 +164,7 @@ export class ApplicationsService {
     });
   }
 
+  // Called by ApplicationsController.updateStatus() — transitions status and records a STATUS_CHANGED event in a transaction.
   async updateStatus(
     id: string,
     updateApplicationStatusDto: UpdateApplicationStatusDto,
@@ -199,6 +205,7 @@ export class ApplicationsService {
     });
   }
 
+  // Called by ApplicationsController.findEvents() — returns the event/audit log for one application.
   async findEvents(id: string, organizationId: string) {
     await this.ensureApplicationExists(id, organizationId);
 
@@ -212,6 +219,7 @@ export class ApplicationsService {
     });
   }
 
+  // Called by ApplicationsController.findByCandidateId() — lists a candidate's applications with a summary projection.
   async findByCandidateId(candidateId: string, organizationId: string) {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, organizationId },
@@ -233,6 +241,7 @@ export class ApplicationsService {
     });
   }
 
+  // Called by create() to confirm the candidate, resume, and job description exist, belong together, and the job is active.
   private async validateApplicationRelations(
     candidateId: string,
     resumeId: string,
@@ -275,6 +284,7 @@ export class ApplicationsService {
     }
   }
 
+  // Called by update(), updateStatus(), and findEvents() to 404 early when the application isn't found in this org.
   private async ensureApplicationExists(id: string, organizationId: string) {
     const application = await this.prisma.application.findFirst({
       where: { id, organizationId },
@@ -291,6 +301,7 @@ export class ApplicationsService {
     return application;
   }
 
+  // Shared Prisma include shape used by create/findAll/findOne/update/updateStatus to hydrate related records.
   private getApplicationInclude(): Prisma.ApplicationInclude {
     return {
       candidate: true,
@@ -334,6 +345,7 @@ export class ApplicationsService {
     };
   }
 
+  // Prisma select shape used by findByCandidateId() to return a lighter-weight application summary.
   private getCandidateApplicationSummarySelect(): Prisma.ApplicationSelect {
     return {
       id: true,
