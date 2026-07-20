@@ -1,3 +1,4 @@
+// Query params for GET /candidates — pagination, search, and sorting.
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
