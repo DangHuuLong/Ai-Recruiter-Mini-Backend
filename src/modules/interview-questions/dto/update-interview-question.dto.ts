@@ -1,3 +1,4 @@
+// Body for PATCH /interview-questions/:id — all fields optional, mirrors CreateInterviewQuestionDto.
 import {
   AssessmentTarget,
   AutonomyLevel,
