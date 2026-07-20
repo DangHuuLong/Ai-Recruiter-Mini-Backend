@@ -1,3 +1,4 @@
+// Body for POST /applications — links a candidate, resume, and job description into a new application.
 import { IsOptional, IsString } from 'class-validator';
 
 export class CreateApplicationDto {
