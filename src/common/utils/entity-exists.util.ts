@@ -1,6 +1,8 @@
+// Helpers that fetch an entity by id/organization scope or throw a 404 AppException.
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AppException } from '../exceptions/app.exception';
 
+// Called by candidate services/controllers to scope-check a candidate before mutating it; throws AppException(404) if missing.
 export async function ensureCandidateExists(
   prisma: PrismaService,
   id: string,
@@ -20,6 +22,7 @@ export async function ensureCandidateExists(
   return candidate;
 }
 
+// Called by resume services/controllers to scope-check a resume before mutating it; throws AppException(404) if missing.
 export async function ensureResumeExists(
   prisma: PrismaService,
   id: string,
@@ -40,6 +43,7 @@ export async function ensureResumeExists(
   return resume;
 }
 
+// Called by upload/file services to scope-check a FileAsset before use; throws AppException(404) if missing.
 export async function ensureFileAssetExists(
   prisma: PrismaService,
   id: string,
