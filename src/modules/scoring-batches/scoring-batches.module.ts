@@ -1,3 +1,4 @@
+// Wires up the ScoringBatches feature module: controller, promote service, BullMQ parse queues, and job-descriptions dependency.
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
