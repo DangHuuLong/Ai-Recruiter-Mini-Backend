@@ -1,3 +1,4 @@
+// Body for POST /public/batches — anonymous scoring batch creation from files/text/structured input; no evaluationConfigId, always uses DEFAULT_EVALUATION_CRITERIA.
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -16,7 +17,6 @@ import { ResumeFileRefDto } from '../../scoring-batches/dto/resume-file-ref.dto'
 import { ResumeStructuredInputDto } from '../../scoring-batches/dto/resume-structured-input.dto';
 import { ResumeTextInputDto } from '../../scoring-batches/dto/resume-text-input.dto';
 
-// No evaluationConfigId — public batches always use DEFAULT_EVALUATION_CRITERIA.
 export class CreatePublicBatchDto {
   @IsOptional()
   @IsString()
