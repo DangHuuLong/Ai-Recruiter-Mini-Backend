@@ -1,3 +1,4 @@
+// Body for POST /interview-questions/search(-or-generate) — semantic query text plus hard filters and result limit.
 import { Transform, Type } from 'class-transformer';
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { OccupationFamily } from '@prisma/client';
