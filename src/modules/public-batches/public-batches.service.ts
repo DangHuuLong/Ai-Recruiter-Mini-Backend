@@ -1,3 +1,4 @@
+// Service for the anonymous public batches flow: signed upload URLs, batch creation into Redis-backed context, and status retrieval.
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -39,6 +40,7 @@ export class PublicBatchesService {
     @InjectQueue(QUEUE_NAMES.JD_PARSE) private readonly jdParseQueue: Queue<JdParseJobData>,
   ) {}
 
+  // Called by PublicBatchesController.createUploadUrls — validates file count/type/size and mints signed Supabase upload URLs.
   async createUploadUrls(dto: CreateUploadUrlsDto, sessionId: string) {
     const maxFiles = this.configService.get<number>('PUBLIC_MAX_FILES_PER_BATCH') ?? 2;
     const maxFileSizeMb =
@@ -80,6 +82,7 @@ export class PublicBatchesService {
     );
   }
 
+  // Called by PublicBatchesController.create — validates inputs, seeds RedisBatchContextStore, and enqueues resume/JD parse jobs via BullMQ.
   async create(dto: CreatePublicBatchDto, sessionId: string) {
     const resumeFiles = dto.resumeFiles ?? [];
     const resumeTexts = dto.resumeTexts ?? [];
@@ -118,7 +121,6 @@ export class PublicBatchesService {
 
     const bucket = this.getPublicBucket();
 
-    // No FileAsset row — public batches never touch Postgres.
     const [resumeFileTypes, jdFileTypes] = await Promise.all([
       Promise.all(resumeFiles.map((ref) => this.verifyFileRef(ref, bucket))),
       Promise.all(jobDescriptionFiles.map((ref) => this.verifyFileRef(ref, bucket))),
@@ -274,10 +276,10 @@ export class PublicBatchesService {
     };
   }
 
+  // Called by PublicBatchesController.findOne — reads a batch snapshot from Redis, enforcing session ownership.
   async findOne(batchId: string, sessionId: string) {
     const snapshot = await this.redisStore.getBatchSnapshot(batchId);
 
-    // 404 (not 403) on session mismatch — doesn't leak whether the batch id exists.
     if (!snapshot || snapshot.meta.ownerSessionId !== sessionId) {
       throw new AppException('Batch not found', 404);
     }
@@ -301,10 +303,12 @@ export class PublicBatchesService {
     };
   }
 
+  // Resolves the configured public temp storage bucket, used by createUploadUrls/create/verifyFileRef.
   private getPublicBucket(): string {
     return this.configService.get<string>('supabase.publicTempBucket') ?? 'file-public';
   }
 
+  // Called by create() for each uploaded file ref — confirms it exists in storage, checksum matches, and file type is supported.
   private async verifyFileRef(
     ref: ResumeFileRefDto | JobDescriptionFileRefDto,
     bucket: string,
