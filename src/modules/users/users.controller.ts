@@ -1,3 +1,4 @@
+// HTTP routes for creating, listing, and updating users, plus the current-user "me" endpoint.
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
@@ -22,6 +23,7 @@ export class UsersController {
     private readonly authTokenService: AuthTokenService,
   ) {}
 
+  // POST /users — creates an org user then issues an email verification token via AuthTokenService.
   @Post()
   @Roles(UserRole.ADMIN)
   async create(@Body() createUserDto: CreateUserDto, @CurrentUser() currentUser: AuthUser) {
@@ -34,6 +36,7 @@ export class UsersController {
     };
   }
 
+  // GET /users — paginated, filterable list of users for the caller's organization.
   @Get()
   @Roles(UserRole.ADMIN)
   async findAll(@Query() query: UserQueryDto, @CurrentUser() currentUser: AuthUser) {
@@ -46,6 +49,7 @@ export class UsersController {
     };
   }
 
+  // GET /users/me — returns the authenticated user's own profile from the JWT-derived AuthUser.
   @Get('me')
   async me(@CurrentUser() currentUser: AuthUser) {
     return {
@@ -57,6 +61,7 @@ export class UsersController {
   @Patch(':id')
   @Roles(UserRole.ADMIN)
   @UseInterceptors(AuditLogInterceptor)
+  // PATCH /users/:id — updates a user's name/role/active status via UsersService.update; audited via AuditLogInterceptor.
   @AuditLog({ action: 'UPDATE', resourceType: 'User' })
   async update(
     @Param('id') id: string,
