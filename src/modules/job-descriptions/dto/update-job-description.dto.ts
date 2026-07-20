@@ -1,8 +1,8 @@
+// Body for PATCH /job-descriptions/:id — includes manual occupationFamily/specialization override on top of CreateJobDescriptionDto fields.
 import { OccupationFamily } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateJobDescriptionDto {
-  // Manual override for JobDescriptionClassifierService's guess — both or neither.
   @IsOptional()
   @IsEnum(OccupationFamily)
   occupationFamily?: OccupationFamily;
