@@ -1,3 +1,4 @@
+// CRUD and AI-backed parsing logic for resumes, including signed-URL fetch and candidate profile sync.
 import { Injectable } from '@nestjs/common';
 import { FileAssetStatus, ParseStatus, Prisma } from '@prisma/client';
 
@@ -27,6 +28,7 @@ export class ResumesService {
     private readonly storageService: SupabaseStorageService,
   ) {}
 
+  // Called by ResumesController.create — links a candidate to an active, unlinked file asset as a new PENDING resume.
   async create(createResumeDto: CreateResumeDto, organizationId: string) {
     await ensureCandidateExists(this.prisma, createResumeDto.candidateId, organizationId);
 
@@ -63,6 +65,7 @@ export class ResumesService {
     });
   }
 
+  // Called by ResumesController.findAll — builds an org-scoped, filtered/searched Prisma query and returns paginated resumes.
   async findAll(query: ResumeQueryDto, organizationId: string) {
     const page = query.page;
     const limit = query.limit;
@@ -123,6 +126,7 @@ export class ResumesService {
     };
   }
 
+  // Called by ResumesController.findOne — fetches a single org-scoped resume or throws a 404.
   async findOne(id: string, organizationId: string) {
     const resume = await this.prisma.resume.findFirst({
       where: { id, candidate: { organizationId } },
@@ -136,6 +140,7 @@ export class ResumesService {
     return resume;
   }
 
+  // Called by ResumesController.parse — signs the resume file's URL, sends it to AiService.parseResume, and persists the result.
   async parse(id: string, organizationId: string) {
     const resume = await this.prisma.resume.findFirst({
       where: { id, candidate: { organizationId } },
@@ -207,6 +212,7 @@ export class ResumesService {
     }
   }
 
+  // Called by ResumesController.getParsedData — returns just the parsing-related fields of a resume.
   async getParsedData(id: string, organizationId: string) {
     const resume = await this.prisma.resume.findFirst({
       where: { id, candidate: { organizationId } },
@@ -229,6 +235,7 @@ export class ResumesService {
     return resume;
   }
 
+  // Called by ResumesController.update — applies partial updates to a resume's parsed text/data/status.
   async update(id: string, updateResumeDto: UpdateResumeDto, organizationId: string) {
     await ensureResumeExists(this.prisma, id, organizationId);
 
@@ -245,6 +252,7 @@ export class ResumesService {
     });
   }
 
+  // Called by ResumesController.remove — deletes a resume, refusing if any Application already references it.
   async remove(id: string, organizationId: string) {
     await ensureResumeExists(this.prisma, id, organizationId);
 
@@ -268,6 +276,7 @@ export class ResumesService {
     };
   }
 
+  // Called from parse() after a successful AI parse — writes parsed data onto Candidate.normalizedProfile for downstream matching.
   private async updateCandidateNormalizedProfile(candidateId: string, parsedData: unknown) {
     await this.prisma.candidate.update({
       where: { id: candidateId },
