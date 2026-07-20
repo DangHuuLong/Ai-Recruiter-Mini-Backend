@@ -1,3 +1,4 @@
+// BullMQ processor: parses one resume file/text via the AI service, with checksum-based caching.
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { HttpException, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
@@ -27,6 +28,7 @@ export class ResumeParseProcessor extends WorkerHost {
     super();
   }
 
+  // BullMQ handler for the resume-parse queue, enqueued by scoring-batches/public-batches services; feeds BatchProgressCoordinatorService's completion tracking via store.updateResumeItem.
   async process(job: Job<ResumeParseJobData>): Promise<void> {
     const { batchId, tier, resumeItemId, storageKey, bucket, fileName, fileType, checksum, rawText } =
       job.data;
@@ -76,8 +78,6 @@ export class ResumeParseProcessor extends WorkerHost {
       const statusCode = error instanceof HttpException ? error.getStatus() : 500;
 
       if (RETRYABLE_STATUS_CODES.has(statusCode)) {
-        // Transient AI-service/network failure — rethrow so BullMQ retries
-        // with backoff instead of recording a permanent failure.
         throw error;
       }
 
