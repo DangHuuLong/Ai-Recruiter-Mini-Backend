@@ -1,3 +1,6 @@
+// Listens for job completion across the parse/score queues and drives batch
+// stage transitions (PARSING -> SCORING -> COMPLETED), guarded by a Redis
+// NX lock per batch/transition since the side effects aren't idempotent.
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -10,20 +13,6 @@ import { RedisService } from '../integrations/redis/redis.service';
 
 const TRANSITION_LOCK_TTL_SECONDS = 3600;
 
-/**
- * Listens for job completion across the parse/score queues and drives batch
- * stage transitions (PARSING -> SCORING -> COMPLETED). Deliberately reacts
- * only to queue-level events (post-retry-exhaustion), never counts from
- * inside a processor's own try/catch — that would double-count on BullMQ
- * retries. Safe to react redundantly since progress counts are recomputed
- * from the store's source of truth on every event, not incremented.
- *
- * The stage-transition side effects (enqueueing score-pair jobs, enqueueing
- * the notify job) are NOT idempotent, though — if the last 2 items of a
- * stage settle within milliseconds of each other, both event handlers can
- * see completed === total and both fire. Guarded with a Redis NX lock per
- * batch per transition so only the first handler to arrive proceeds.
- */
 @Injectable()
 export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BatchProgressCoordinatorService.name);
@@ -41,6 +30,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     @InjectQueue(QUEUE_NAMES.NOTIFY) private readonly notifyQueue: Queue<NotifyJobData>,
   ) {}
 
+  // Nest lifecycle hook: opens QueueEvents listeners on the parse/score queues to drive batch stage transitions.
   onModuleInit() {
     const connection = { url: this.configService.get<string>('queue.redisUrl'), maxRetriesPerRequest: null as null };
 
@@ -58,6 +48,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     this.scorePairEvents.on('failed', ({ jobId }) => this.onScoreFailedExhausted(this.scorePairQueue, jobId));
   }
 
+  // Nest lifecycle hook: closes the QueueEvents listeners opened in onModuleInit on app shutdown.
   async onModuleDestroy() {
     await Promise.all([
       this.resumeParseEvents?.close(),
@@ -66,6 +57,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     ]);
   }
 
+  // Wired to the resume/jd-parse QueueEvents 'failed' listeners in onModuleInit; marks the item FAILED after retries are exhausted.
   private async onParseFailedExhausted<T extends { batchId: string; tier: BatchTier }>(
     queue: Queue<T>,
     jobId: string | undefined,
@@ -91,6 +83,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     await this.onParseSettled(queue, jobId);
   }
 
+  // Wired to the resume/jd-parse QueueEvents 'completed' listeners in onModuleInit; forwards to checkParseCompletion.
   private async onParseSettled<T extends { batchId: string; tier: BatchTier }>(
     queue: Queue<T>,
     jobId: string | undefined,
@@ -101,13 +94,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     await this.checkParseCompletion(job.data.batchId, job.data.tier);
   }
 
-  /**
-   * Advances PARSING -> SCORING if every CV/JD item has settled. Called both
-   * from queue events and directly by batch creation, since a batch made
-   * entirely of resumeStructured/jobDescriptionStructured items enqueues no
-   * resume-parse/jd-parse jobs at all — without this direct call, such a
-   * batch would never receive a queue event and would sit in PARSING forever.
-   */
+  // Called from onParseSettled and directly by scoring-batches.service.ts/public-batches.service.ts; advances a batch to the scoring stage once all parse jobs finish.
   async checkParseCompletion(batchId: string, tier: BatchTier): Promise<void> {
     const store = this.storeFactory.forTier(tier);
 
@@ -117,13 +104,12 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     const acquired = await this.acquireTransitionLock(batchId, 'scoring-stage');
     if (!acquired) return;
 
-    // A cancel() call can land after items already in flight finish parsing —
-    // don't resurrect a cancelled batch back into SCORING.
     if ((await store.getBatchStatusOnly(batchId)) === 'CANCELLED') return;
 
     await this.startScoringStage(store, batchId, tier);
   }
 
+  // Called by checkParseCompletion once the transition lock is acquired; enqueues one score-pair job per resume/JD combination.
   private async startScoringStage(
     store: ReturnType<BatchContextStoreFactory['forTier']>,
     batchId: string,
@@ -135,8 +121,6 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     await store.setBatchPairCount(batchId, totalPairCount);
 
     if (totalPairCount === 0) {
-      // Nothing scoreable (every CV or every JD failed to parse) — batch is
-      // done, skip straight to the terminal state instead of hanging in SCORING.
       await store.markBatchStatus(batchId, 'COMPLETED_WITH_ERRORS');
       await this.enqueueNotifyIfConfigured(store, batchId, tier, 'COMPLETED_WITH_ERRORS');
       return;
@@ -156,6 +140,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     }
   }
 
+  // Wired to the score-pair QueueEvents 'failed' listener in onModuleInit; records the pair result as FAILED after retries are exhausted.
   private async onScoreFailedExhausted(queue: Queue<ScorePairJobData>, jobId: string | undefined) {
     const job = jobId ? await queue.getJob(jobId) : undefined;
     if (!job) return;
@@ -171,6 +156,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     await this.onScoreSettled(queue, jobId);
   }
 
+  // Wired to the score-pair QueueEvents 'completed' listener in onModuleInit; marks the batch COMPLETED and triggers notify once all pairs are scored.
   private async onScoreSettled(queue: Queue<ScorePairJobData>, jobId: string | undefined) {
     const job = jobId ? await queue.getJob(jobId) : undefined;
     if (!job) return;
@@ -184,8 +170,6 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     const acquired = await this.acquireTransitionLock(batchId, 'completion');
     if (!acquired) return;
 
-    // Same rationale as checkParseCompletion — don't overwrite CANCELLED
-    // with a COMPLETED status just because in-flight scoring jobs finished.
     if ((await store.getBatchStatusOnly(batchId)) === 'CANCELLED') return;
 
     const finalStatus = failed > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED';
@@ -193,7 +177,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     await this.enqueueNotifyIfConfigured(store, batchId, tier, finalStatus);
   }
 
-  /** Ensures only the first of several concurrently-arriving events proceeds past a given stage transition. */
+  // Redis NX lock so only one worker performs a given batch stage transition, since the side effects aren't idempotent.
   private async acquireTransitionLock(batchId: string, stage: string): Promise<boolean> {
     const client = this.redisService.getClient();
     const result = await client.set(
@@ -207,6 +191,7 @@ export class BatchProgressCoordinatorService implements OnModuleInit, OnModuleDe
     return result === 'OK';
   }
 
+  // Called by startScoringStage/onScoreSettled to enqueue a notify job when the batch has a webhook/email target configured.
   private async enqueueNotifyIfConfigured(
     store: ReturnType<BatchContextStoreFactory['forTier']>,
     batchId: string,
