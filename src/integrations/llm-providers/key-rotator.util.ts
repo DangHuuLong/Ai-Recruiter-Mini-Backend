@@ -1,20 +1,21 @@
-// Round-robins through a provider's configured API keys — used both to
-// spread load across keys and, in MultiProviderCompletionService, to
-// continue a truncated response using a different key than the one that
-// got cut off.
+// Round-robins through a provider's configured API keys to spread load
+// and to resume a truncated response on a different key.
 export class KeyRotator {
   private index = 0;
 
   constructor(private readonly keys: string[]) {}
 
+  // Checked by GeminiEmbeddingService/MultiProviderCompletionService before attempting a call.
   hasKeys(): boolean {
     return this.keys.length > 0;
   }
 
+  // Used by callers to bound their retry-across-keys loop.
   size(): number {
     return this.keys.length;
   }
 
+  // Returns the next key in round-robin order; called once per attempt in the retry loops above.
   next(): string {
     if (this.keys.length === 0) {
       throw new Error('No API keys configured for this provider');
