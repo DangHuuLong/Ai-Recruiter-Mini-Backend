@@ -1,3 +1,4 @@
+// Body for PATCH /users/:id — partial update of a user's name, role, or active status.
 import { UserRole } from '@prisma/client';
 import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
