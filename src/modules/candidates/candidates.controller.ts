@@ -14,6 +14,7 @@ import {
 import { UserRole } from '@prisma/client';
 
 import { CandidatesService } from './candidates.service';
+import { BulkDeleteCandidatesDto } from './dto/bulk-delete-candidates.dto';
 import { CandidateQueryDto } from './dto/candidate-query.dto';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
@@ -45,6 +46,20 @@ export class CandidatesController {
     return {
       message: 'Candidate created successfully',
       data: candidate,
+    };
+  }
+
+  // POST /candidates/bulk-delete — deletes multiple candidates, reporting per-id success/failure.
+  @Post('bulk-delete')
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  @UseInterceptors(AuditLogInterceptor)
+  @AuditLog({ action: 'BULK_DELETE', resourceType: 'Candidate' })
+  async removeBulk(@Body() dto: BulkDeleteCandidatesDto, @CurrentUser() currentUser: AuthUser) {
+    const results = await this.candidatesService.removeMany(dto.ids, currentUser.organizationId);
+
+    return {
+      message: 'Bulk candidate deletion completed',
+      data: results,
     };
   }
 
