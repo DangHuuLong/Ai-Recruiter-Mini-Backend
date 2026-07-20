@@ -1,3 +1,4 @@
+// Default weighted evaluation criteria used to score a Candidate against a JobDescription.
 import { CriterionName } from '@prisma/client';
 
 import { ScoreCriterionConfig } from '../types/ai-service.types';
