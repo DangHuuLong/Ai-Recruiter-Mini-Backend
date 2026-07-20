@@ -1,3 +1,4 @@
+// Query params for GET /evaluation-configs — pagination, job description filter, and sorting.
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
