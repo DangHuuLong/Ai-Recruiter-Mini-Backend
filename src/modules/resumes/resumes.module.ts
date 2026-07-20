@@ -1,3 +1,4 @@
+// Wires up the Resumes feature module, depending on AI and Storage integrations.
 import { Module } from '@nestjs/common';
 
 import { ResumesController } from './resumes.controller';
