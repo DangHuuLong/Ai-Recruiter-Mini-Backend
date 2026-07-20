@@ -1,3 +1,4 @@
+// Global exception filter that formats all thrown errors into a standard JSON error response.
 import {
   ArgumentsHost,
   Catch,
@@ -16,6 +17,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
   constructor(private readonly nodeEnv = 'development') {}
 
+  // Registered globally in main.ts; normalizes any thrown exception into the app's standard JSON error response.
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
