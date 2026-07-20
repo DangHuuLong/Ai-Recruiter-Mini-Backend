@@ -1,3 +1,4 @@
+// Mounts the Bull Board queue dashboard behind admin-only JWT middleware.
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
@@ -13,12 +14,7 @@ import { QUEUE_NAMES } from './queue.constants';
 
 const BULL_BOARD_PATH = '/api/admin/queues';
 
-/**
- * Mounted as raw Express middleware (before Nest's own routing), so it can't
- * use @UseGuards(JwtAuthGuard, RolesGuard) directly like a normal controller
- * — this inlines the same check (valid JWT + active + verified + ADMIN role)
- * as a plain middleware function instead.
- */
+// Builds the Express middleware gating the Bull Board route to authenticated, active ADMIN users; used by setupBullBoard below.
 function createAdminOnlyMiddleware(app: INestApplication) {
   const configService = app.get(ConfigService);
   const prisma = app.get(PrismaService);
@@ -59,6 +55,7 @@ function createAdminOnlyMiddleware(app: INestApplication) {
   };
 }
 
+// Called from main.ts during bootstrap to mount the /api/admin/queues dashboard onto the Nest app.
 export function setupBullBoard(app: INestApplication): void {
   const queues = Object.values(QUEUE_NAMES).map((name) =>
     app.get<Queue>(getQueueToken(name)),
