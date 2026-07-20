@@ -1,21 +1,26 @@
+// Minimal hand-rolled HS256 JWT sign/verify helpers (no external JWT library dependency).
 import { createHmac, timingSafeEqual } from 'crypto';
 
 import { JwtPayload } from '../types/auth-user.type';
 
 const JWT_ALGORITHM = 'HS256';
 
+// Encodes a JWT header/payload segment; used internally by signJwt() and signValue().
 function base64UrlEncode(value: Buffer | string): string {
   return Buffer.from(value).toString('base64url');
 }
 
+// Decodes a JWT header/payload segment; used internally by verifyJwt().
 function base64UrlDecode(value: string): Buffer {
   return Buffer.from(value, 'base64url');
 }
 
+// Computes the HMAC-SHA256 signature segment; shared by signJwt() and verifyJwt().
 function signValue(value: string, secret: string): string {
   return createHmac('sha256', secret).update(value).digest('base64url');
 }
 
+// Issues an access/refresh token; called by the auth service on login and token refresh.
 export function signJwt(
   payload: Omit<JwtPayload, 'iat' | 'exp'>,
   secret: string,
@@ -43,6 +48,7 @@ export function signJwt(
   return `${unsignedToken}.${signature}`;
 }
 
+// Validates and decodes a Bearer token; called by JwtAuthGuard.canActivate() on every protected request.
 export function verifyJwt(token: string, secret: string): JwtPayload | null {
   const parts = token.split('.');
 
