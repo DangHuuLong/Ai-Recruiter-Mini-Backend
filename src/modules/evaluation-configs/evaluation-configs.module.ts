@@ -1,3 +1,4 @@
+// Module wiring for the evaluation configs feature (controller + service).
 import { Module } from '@nestjs/common';
 
 import { EvaluationConfigsController } from './evaluation-configs.controller';
