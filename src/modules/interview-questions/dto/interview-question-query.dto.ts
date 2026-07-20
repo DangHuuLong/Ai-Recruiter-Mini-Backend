@@ -1,3 +1,4 @@
+// Query params for GET /interview-questions — pagination plus optional occupationFamily/questionType/qualityGateStatus filters.
 import { Transform } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 import {
