@@ -1,3 +1,4 @@
+// Body for POST /users — creates a new user account within the current organization.
 import { UserRole } from '@prisma/client';
 import { IsEmail, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
