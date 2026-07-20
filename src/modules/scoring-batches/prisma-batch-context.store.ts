@@ -1,3 +1,4 @@
+// Enterprise (persisted) implementation of BatchContextStore, backed by the ScoringBatch* Postgres tables.
 import { Injectable } from '@nestjs/common';
 import { ScoringBatchStatus } from '@prisma/client';
 
@@ -18,11 +19,11 @@ import {
   ScoreCounterResult,
 } from '../../queue/batch-store/batch-context-store.interface';
 
-/** Enterprise (persisted) implementation of BatchContextStore, backed by the ScoringBatch* Postgres tables. */
 @Injectable()
 export class PrismaBatchContextStore implements BatchContextStore {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Called by the resume-parse queue processor after AI parsing — persists parsed text/data/status onto ScoringBatchResume.
   async updateResumeItem(
     batchId: string,
     resumeItemId: string,
@@ -39,6 +40,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     });
   }
 
+  // Called by the jd-parse queue processor after AI parsing — persists parsed data/status/taxonomy onto ScoringBatchJobDescription.
   async updateJdItem(batchId: string, jdItemId: string, patch: JdItemPatch): Promise<void> {
     await this.prisma.scoringBatchJobDescription.update({
       where: { id: jdItemId },
@@ -52,6 +54,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     });
   }
 
+  // Called by the scoring queue processor after AiService scores a resume x JD pair — writes/updates the ScoringBatchResult row.
   async upsertResult(
     batchId: string,
     resumeItemId: string,
@@ -79,6 +82,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     });
   }
 
+  // Called by parse queue processors after each item finishes — reports batch-wide parse progress for status updates.
   async incrementParseCompleted(batchId: string): Promise<CounterResult> {
     const batch = await this.prisma.scoringBatch.findUniqueOrThrow({
       where: { id: batchId },
@@ -100,6 +104,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     };
   }
 
+  // Called by the scoring queue processor after each pair is scored — updates ScoringBatch's completed/failed pair counts.
   async incrementScoreCompleted(batchId: string): Promise<ScoreCounterResult> {
     const batch = await this.prisma.scoringBatch.findUniqueOrThrow({
       where: { id: batchId },
@@ -113,9 +118,6 @@ export class PrismaBatchContextStore implements BatchContextStore {
       this.prisma.scoringBatchResult.count({ where: { batchId, status: 'FAILED' } }),
     ]);
 
-    // Persist the counts onto the batch row itself so a cheap read (e.g. a
-    // future GET /scoring-batches/:id status endpoint) doesn't need to
-    // re-run these COUNT queries just to show progress.
     await this.prisma.scoringBatch.update({
       where: { id: batchId },
       data: { completedPairCount: completed, failedPairCount: failed },
@@ -124,6 +126,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     return { completed, total: batch.totalPairCount, failed };
   }
 
+  // Called by the scoring queue processor to load a resume's parsed data before sending the pair to AiService for scoring.
   async getResumeParsedData(
     batchId: string,
     resumeItemId: string,
@@ -136,6 +139,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     return (item?.parsedData as unknown as ParsedResumeData) ?? null;
   }
 
+  // Called by the scoring queue processor to load a JD's parsed data before sending the pair to AiService for scoring.
   async getJdParsedData(
     batchId: string,
     jdItemId: string,
@@ -148,6 +152,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     return (item?.parsedData as unknown as ParsedJobDescriptionData) ?? null;
   }
 
+  // Called by the scoring queue processor to fetch a JD's occupationFamily/specialization for skill-gap and interview-question lookups.
   async getJdTaxonomy(batchId: string, jdItemId: string): Promise<JdTaxonomy | null> {
     const item = await this.prisma.scoringBatchJobDescription.findUnique({
       where: { id: jdItemId },
@@ -157,6 +162,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     return item ? { occupationFamily: item.occupationFamily, specialization: item.specialization } : null;
   }
 
+  // Called by the resume-parse queue processor to skip re-parsing when an identical file (by checksum) was already parsed for the org.
   async findCachedParsedResumeByChecksum(
     scope: { organizationId?: string },
     checksum: string,
@@ -179,6 +185,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     return (cached?.parsedData as unknown as ParsedResumeData) ?? null;
   }
 
+  // Called by queue orchestration to advance ScoringBatch.status (e.g. PARSING to COMPLETED) as parsing/scoring progresses.
   async markBatchStatus(batchId: string, status: ScoringBatchStatus): Promise<void> {
     const isTerminal =
       status === 'COMPLETED' ||
@@ -196,6 +203,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     });
   }
 
+  // Called by queue processors to check the current ScoringBatch.status before proceeding with further work.
   async getBatchStatusOnly(batchId: string): Promise<ScoringBatchStatus> {
     const batch = await this.prisma.scoringBatch.findUniqueOrThrow({
       where: { id: batchId },
@@ -205,6 +213,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     return batch.status;
   }
 
+  // Called when a batch finishes — fetches the webhook URL/email to notify via the notifications integration.
   async getNotifyTarget(
     batchId: string,
   ): Promise<{ webhookUrl?: string | null; email?: string | null }> {
@@ -216,6 +225,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     return { webhookUrl: batch.notifyWebhookUrl, email: batch.notifyEmail };
   }
 
+  // Called by the scoring orchestrator to build the resume x JD pair list from items that parsed successfully.
   async getSuccessfullyParsedItemIds(
     batchId: string,
   ): Promise<{ resumeItemIds: string[]; jdItemIds: string[] }> {
@@ -236,6 +246,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     };
   }
 
+  // Called by the scoring queue processor to load the evaluation criteria (or defaults) used when scoring each pair.
   async getBatchCriteria(batchId: string): Promise<ScoreCriterionConfig[]> {
     const batch = await this.prisma.scoringBatch.findUniqueOrThrow({
       where: { id: batchId },
@@ -249,6 +260,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     return batch.evaluationConfig.criteriaDefinition as unknown as ScoreCriterionConfig[];
   }
 
+  // Called by orchestration to compute totalPairCount and progress percentages for a batch.
   async getBatchTotals(
     batchId: string,
   ): Promise<{ totalCvCount: number; totalJdCount: number; totalPairCount: number }> {
@@ -258,6 +270,7 @@ export class PrismaBatchContextStore implements BatchContextStore {
     });
   }
 
+  // Called once resume x JD pairs are known — persists totalPairCount on ScoringBatch for progress tracking.
   async setBatchPairCount(batchId: string, totalPairCount: number): Promise<void> {
     await this.prisma.scoringBatch.update({
       where: { id: batchId },
