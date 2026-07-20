@@ -1,3 +1,5 @@
+// Shared Prisma `include` shape for resume queries, selecting candidate and file asset fields.
+// Reused across ResumesService.create/findAll/findOne/parse/update to keep the returned resume shape consistent.
 export function getResumeInclude() {
   return {
     candidate: {
