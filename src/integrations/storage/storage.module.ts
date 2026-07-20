@@ -1,3 +1,4 @@
+// Global module exposing SupabaseStorageService app-wide.
 import { Global, Module } from '@nestjs/common';
 
 import { SupabaseStorageService } from './supabase-storage.service';
