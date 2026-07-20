@@ -1,3 +1,4 @@
+// Service for FileAsset records: validates and uploads files to storage, and manages metadata (fetch, signed download URL, soft-delete).
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileAssetStatus } from '@prisma/client';
@@ -23,6 +24,7 @@ const DOWNLOAD_URL_EXPIRES_IN_SECONDS = 600;
 export class FilesService {
   private readonly maxFileSizeBytes: number;
 
+  // Resolves the configured MAX_FILE_SIZE_MB into a byte limit used by uploadFile's validation.
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -34,6 +36,7 @@ export class FilesService {
     this.maxFileSizeBytes = getMaxUploadFileSizeBytes(maxFileSizeMb);
   }
 
+  // Called by FilesController.uploadFile — validates type/size, uploads to Supabase storage, and persists a FileAsset row.
   async uploadFile(organizationId: string, file?: UploadFileInput) {
     if (!file) {
       throw new AppException('File is required', 400);
@@ -83,6 +86,7 @@ export class FilesService {
     });
   }
 
+  // Fetches an active FileAsset scoped to the org; reused by getDownloadUrl and remove, and directly by FilesController.findOne.
   async findOne(id: string, organizationId: string) {
     const fileAsset = await this.prisma.fileAsset.findFirst({
       where: {
@@ -99,6 +103,7 @@ export class FilesService {
     return fileAsset;
   }
 
+  // Called by FilesController.getDownloadUrl — mints a time-limited signed URL from SupabaseStorageService.
   async getDownloadUrl(id: string, organizationId: string) {
     const fileAsset = await this.findOne(id, organizationId);
     const url = await this.storageService.createSignedUrl(
@@ -110,6 +115,7 @@ export class FilesService {
     return { url, expiresIn: DOWNLOAD_URL_EXPIRES_IN_SECONDS };
   }
 
+  // Called by FilesController.remove — blocks deletion if a resume references the file, else soft-deletes it.
   async remove(id: string, organizationId: string) {
     const fileAsset = await this.prisma.fileAsset.findFirst({
       where: {
