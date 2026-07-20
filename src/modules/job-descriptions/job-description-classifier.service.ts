@@ -1,3 +1,4 @@
+// Classifies a parsed JD into the OccupationFamily/specialization taxonomy via LLM prompt, validating the result against the known taxonomy.
 import { Injectable, Logger } from '@nestjs/common';
 import { OccupationFamily } from '@prisma/client';
 
@@ -10,6 +11,7 @@ export interface JobDescriptionClassification {
   specialization: string;
 }
 
+// Called by classify() to build the LLM prompt listing allowed occupationFamily/specialization pairs from the taxonomy.
 function buildPrompt(parsedData: ParsedJobDescriptionData): string {
   const taxonomyList = INTERVIEW_QUESTION_TAXONOMY.map(
     (entry) => `- ${entry.occupationFamily}: ${entry.specializations.join(', ')}`,
@@ -34,6 +36,7 @@ Domain keywords: ${parsedData.domain_keywords.join(', ')}
 Return pure JSON only, no markdown fence, no explanation. Shape: { "occupationFamily": string | null, "specialization": string | null }`;
 }
 
+// Called by classify() to strip a ```json fence the LLM may wrap its JSON response in before parsing.
 function stripMarkdownFence(text: string): string {
   const trimmed = text.trim();
   const fenceMatch = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
@@ -46,7 +49,7 @@ export class JobDescriptionClassifierService {
 
   constructor(private readonly completionService: MultiProviderCompletionService) {}
 
-  // Never throws — classification is a nice-to-have, must not break parse().
+  // Called by JobDescriptionsService.parse — classifies a parsed JD, returning null if the LLM's answer doesn't match a known taxonomy pair.
   async classify(parsedData: ParsedJobDescriptionData): Promise<JobDescriptionClassification | null> {
     try {
       const raw = await this.completionService.generate(buildPrompt(parsedData));
