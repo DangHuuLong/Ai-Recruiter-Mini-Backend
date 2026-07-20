@@ -1,3 +1,4 @@
+// BullMQ processor: parses one job description (file or raw text) via the AI service and classifies it.
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { HttpException, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
@@ -27,6 +28,7 @@ export class JdParseProcessor extends WorkerHost {
     super();
   }
 
+  // BullMQ handler for the jd-parse queue, enqueued by scoring-batches/public-batches services; feeds BatchProgressCoordinatorService's completion tracking via store.updateJdItem.
   async process(job: Job<JdParseJobData>): Promise<void> {
     const { batchId, tier, jdItemId, rawText, storageKey, bucket, fileName, fileType } = job.data;
     const store = this.storeFactory.forTier(tier);
