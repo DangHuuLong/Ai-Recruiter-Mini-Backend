@@ -1,3 +1,4 @@
+// Raw-text job description input for a scoring batch.
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class JobDescriptionInputDto {
