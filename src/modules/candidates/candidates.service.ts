@@ -211,4 +211,27 @@ export class CandidatesService {
       deleted: true,
     };
   }
+
+  // Called by CandidatesController.removeBulk() — runs remove() per id, collecting per-item success/failure results.
+  async removeMany(ids: string[], organizationId: string) {
+    const results: Array<
+      { id: string; success: true; data: Awaited<ReturnType<CandidatesService['remove']>> }
+      | { id: string; success: false; error: string }
+    > = [];
+
+    for (const id of ids) {
+      try {
+        const data = await this.remove(id, organizationId);
+        results.push({ id, success: true, data });
+      } catch (error) {
+        results.push({
+          id,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return results;
+  }
 }
