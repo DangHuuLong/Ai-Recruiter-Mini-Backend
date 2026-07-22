@@ -1,6 +1,7 @@
 // Body for PATCH /users/:id — partial update of a user's name, role, or active status.
-import { UserRole } from '@prisma/client';
-import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+
+import { ORG_ASSIGNABLE_ROLES, type OrgAssignableRole } from '../../../common/constants/org-assignable-roles';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -9,8 +10,8 @@ export class UpdateUserDto {
   fullName?: string;
 
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  @IsIn(ORG_ASSIGNABLE_ROLES)
+  role?: OrgAssignableRole;
 
   @IsOptional()
   @IsBoolean()
