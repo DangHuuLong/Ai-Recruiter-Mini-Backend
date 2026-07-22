@@ -1,6 +1,8 @@
 // Body for POST /users — creates a new user account within the current organization.
 import { UserRole } from '@prisma/client';
-import { IsEmail, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+
+import { ORG_ASSIGNABLE_ROLES, type OrgAssignableRole } from '../../../common/constants/org-assignable-roles';
 
 export class CreateUserDto {
   @IsEmail()
@@ -18,6 +20,6 @@ export class CreateUserDto {
   fullName?: string;
 
   @IsOptional()
-  @IsEnum(UserRole)
-  role: UserRole = UserRole.RECRUITER;
+  @IsIn(ORG_ASSIGNABLE_ROLES)
+  role: OrgAssignableRole = UserRole.RECRUITER;
 }
