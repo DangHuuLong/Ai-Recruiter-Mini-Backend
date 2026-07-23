@@ -9,6 +9,7 @@ import { Queue } from 'bullmq';
 import { CreateScoringBatchDto } from './dto/create-scoring-batch.dto';
 import { CreateUploadUrlsDto } from './dto/create-upload-urls.dto';
 import { MatrixQueryDto } from './dto/matrix-query.dto';
+import { ScoringBatchQueryDto } from './dto/scoring-batch-query.dto';
 import { SkillGapQueryDto } from './dto/skill-gap-query.dto';
 import { mapStructuredJdToParsedData } from './job-description-structured.mapper';
 import { mapStructuredResumeToParsedData } from './resume-structured.mapper';
@@ -360,6 +361,44 @@ export class ScoringBatchesService {
       status: 'PARSING' as const,
       totalCvCount: resumeItems.file.length + resumeItems.text.length + resumeItems.structured.length,
       totalJdCount: jdItems.text.length + jdItems.file.length + jdItems.structured.length,
+    };
+  }
+
+  // Called by ScoringBatchesController.findAll — paginated, org-scoped list of scoring batches for the batch list UI.
+  async findAll(query: ScoringBatchQueryDto, organizationId: string) {
+    const page = query.page;
+    const limit = query.limit;
+    const skip = (page - 1) * limit;
+
+    const where = {
+      organizationId,
+      ...(query.status ? { status: query.status } : {}),
+    };
+
+    const [batches, total] = await this.prisma.$transaction([
+      this.prisma.scoringBatch.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { [query.sortBy]: query.sortOrder },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          totalCvCount: true,
+          totalJdCount: true,
+          totalPairCount: true,
+          completedPairCount: true,
+          failedPairCount: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.scoringBatch.count({ where }),
+    ]);
+
+    return {
+      data: batches,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
 

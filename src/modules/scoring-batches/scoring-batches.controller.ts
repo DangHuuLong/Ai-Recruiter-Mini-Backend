@@ -18,6 +18,7 @@ import { CreateScoringBatchDto } from './dto/create-scoring-batch.dto';
 import { CreateUploadUrlsDto } from './dto/create-upload-urls.dto';
 import { MatrixQueryDto } from './dto/matrix-query.dto';
 import { PromoteBatchDto } from './dto/promote-batch.dto';
+import { ScoringBatchQueryDto } from './dto/scoring-batch-query.dto';
 import { SkillGapQueryDto } from './dto/skill-gap-query.dto';
 import { ScoringBatchPromoteService } from './scoring-batch-promote.service';
 import { ScoringBatchesService } from './scoring-batches.service';
@@ -77,6 +78,19 @@ export class ScoringBatchesController {
     return {
       message: 'Scoring batch created successfully',
       data,
+    };
+  }
+
+  // GET /scoring-batches — paginated, org-scoped list of scoring batches for the batch list UI.
+  @Get()
+  @Roles(UserRole.ADMIN, UserRole.RECRUITER)
+  async findAll(@Query() query: ScoringBatchQueryDto, @CurrentUser() currentUser: AuthUser) {
+    const result = await this.scoringBatchesService.findAll(query, currentUser.organizationId);
+
+    return {
+      message: 'Scoring batches fetched successfully',
+      data: result.data,
+      meta: result.meta,
     };
   }
 
