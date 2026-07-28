@@ -12,6 +12,8 @@ import { setupBullBoard } from './queue/bull-board.setup';
 // Entry point invoked at the bottom of this file; boots the whole app (Nest, Swagger, Bull Board) when the process starts.
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
+
   const configService = app.get(ConfigService);
 
   const nodeEnv = configService.get<string>('app.nodeEnv') ?? 'development';
