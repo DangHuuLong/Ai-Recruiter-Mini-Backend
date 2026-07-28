@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
+import { ANON_SESSION_HEADER } from './common/middleware/anonymous-session.middleware';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor';
 import { setupBullBoard } from './queue/bull-board.setup';
@@ -24,6 +25,12 @@ async function bootstrap() {
   app.enableCors({
     origin: true,
     credentials: true,
+    // Without this, browsers silently drop the x-anon-session-id response header before
+    // client JS can read it (fetch() only exposes a small safe-list of headers by default)
+    // — the public/anonymous batch flow would create a session that the browser can never
+    // persist, then 404 on every follow-up request. Confirmed via curl (unaffected by CORS,
+    // worked fine) vs a real browser (silently failed) on the deployed frontend.
+    exposedHeaders: [ANON_SESSION_HEADER],
   });
 
   app.useGlobalPipes(
