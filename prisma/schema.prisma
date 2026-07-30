@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ─────────────────────────────────────────────
@@ -15,6 +14,15 @@ enum UserRole {
   ADMIN
   RECRUITER
   HIRING_MANAGER
+  // Manages the shared (non-org-scoped) InterviewQuestionEntry bank —
+  // see Phase 7. Distinct from ADMIN because it's a cross-cutting content
+  // role, not an organization-management role.
+  DEV
+}
+
+enum FileAssetStatus {
+  ACTIVE
+  DELETED
 }
 
 enum ResumeFileType {
@@ -73,23 +81,122 @@ enum CandidateIdentityConfidence {
   LOW
 }
 
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum ScoringBatchStatus {
+  PENDING
+  PARSING
+  SCORING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────
+// ORGANIZATION (multi-tenant root)
+// ─────────────────────────────────────────────
+
+model Organization {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  billingEmail String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users             User[]
+  candidates        Candidate[]
+  jobDescriptions   JobDescription[]
+  applications      Application[]
+  evaluations       Evaluation[]
+  evaluationConfigs EvaluationConfig[]
+  fileAssets        FileAsset[]
+  scoringBatches    ScoringBatch[]
+  auditLogs         AuditLog[]
+
+  @@index([slug])
+}
+
 // ─────────────────────────────────────────────
 // USER
 // ─────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  fullName  String?
-  role      UserRole @default(RECRUITER)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String    @id @default(cuid())
+  organizationId  String
+  email           String    @unique
+  passwordHash    String
+  fullName        String?
+  role            UserRole  @default(RECRUITER)
+  isActive        Boolean   @default(true)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   createdJobs              JobDescription[]   @relation("JobDescriptionCreatedBy")
   createdApplications      Application[]      @relation("ApplicationCreatedBy")
   createdEvaluations       Evaluation[]       @relation("EvaluationCreatedBy")
   createdEvaluationConfigs EvaluationConfig[] @relation("EvaluationConfigCreatedBy")
+  authTokens               AuthToken[]
+  createdScoringBatches    ScoringBatch[]     @relation("ScoringBatchCreatedBy")
+  auditLogs                AuditLog[]
+
+  @@index([organizationId])
+}
+
+// Verification/password-reset tokens. tokenHash stores a sha256 hash of the
+// raw token — the raw value is only ever sent to the user via email, never persisted.
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+// ─────────────────────────────────────────────
+// FILE ASSET
+// ─────────────────────────────────────────────
+
+model FileAsset {
+  id              String          @id @default(cuid())
+  organizationId  String
+  fileName        String
+  originalFileUrl String
+  storageKey      String          @unique
+  fileType        ResumeFileType
+  fileSizeBytes   Int
+  checksum        String?
+  bucket          String
+  status          FileAssetStatus @default(ACTIVE)
+  uploadedAt      DateTime        @default(now())
+  deletedAt       DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  organization                Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  resumes                     Resume[]
+  scoringBatchResumes         ScoringBatchResume[]
+  scoringBatchJobDescriptions ScoringBatchJobDescription[]
+
+  @@index([organizationId])
+  @@index([fileType])
+  @@index([checksum])
+  @@index([status])
+  @@index([uploadedAt])
 }
 
 // ─────────────────────────────────────────────
@@ -98,6 +205,7 @@ model User {
 
 model Candidate {
   id                 String                      @id @default(cuid())
+  organizationId     String
   fullName           String?
   primaryEmail       String?
   primaryPhone       String?
@@ -115,41 +223,42 @@ model Candidate {
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
-  resumes      Resume[]
-  applications Application[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  resumes             Resume[]
+  applications        Application[]
+  scoringBatchResumes ScoringBatchResume[]
 
-  @@index([primaryEmail])
-  @@index([primaryPhone])
+  @@index([organizationId])
+  @@index([organizationId, primaryEmail])
+  @@index([organizationId, primaryPhone])
   @@index([fullName])
 }
 
 model Resume {
-  id             String         @id @default(cuid())
-  candidateId    String
-  fileName       String
-  originalFileUrl String
-  storageKey     String?
-  fileType       ResumeFileType
-  fileSizeBytes  Int?
-  // SHA-256 checksum — used to detect duplicate uploads.
-  checksum       String?
-  rawText        String?
-  // Structured JSON extracted from CV.
-  // Shape: { personal, summary, skills[], education[], experience[], projects[], certifications[], achievements[], languages[] }
-  parsedData     Json?
-  parseStatus    ParseStatus    @default(PENDING)
-  parserVersion  String?
-  parsingError   String?
-  uploadedAt     DateTime       @default(now())
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id          String  @id @default(cuid())
+  candidateId String
+  // Nullable — a resume promoted from a text/structured ScoringBatchResume
+  // (Phase 5) has no backing file at all.
+  fileAssetId String?
 
-  candidate    Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  applications Application[]
+  rawText       String?
+  parsedData    Json?
+  parseStatus   ParseStatus @default(PENDING)
+  parserVersion String?
+  parsingError  String?
+
+  uploadedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  candidate         Candidate            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  fileAsset         FileAsset?           @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  applications      Application[]
+  scoringBatchItems ScoringBatchResume[]
 
   @@index([candidateId])
+  @@index([fileAssetId])
   @@index([parseStatus])
-  @@index([checksum])
 }
 
 // ─────────────────────────────────────────────
@@ -157,30 +266,39 @@ model Resume {
 // ─────────────────────────────────────────────
 
 model JobDescription {
-  id             String      @id @default(cuid())
-  createdById    String?
-  title          String
-  companyName    String?
-  department     String?
-  location       String?
-  employmentType String?
-  seniority      String?
-  rawText        String
+  id               String            @id @default(cuid())
+  organizationId   String
+  createdById      String?
+  title            String
+  companyName      String?
+  department       String?
+  location         String?
+  employmentType   String?
+  seniority        String?
+  // Nullable — a JD promoted from a file/structured ScoringBatchJobDescription
+  // (Phase 5) has no pasted raw text at all.
+  rawText          String?
   // Structured JSON extracted from JD.
   // Shape: { responsibilities[], requirements[], niceToHave[], minExperienceYears, educationRequirement, domainKeywords[] }
-  parsedData     Json?
-  parserVersion  String?
-  parseStatus    ParseStatus @default(PENDING)
-  parsingError   String?
-  isActive       Boolean     @default(true)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  parsedData       Json?
+  parserVersion    String?
+  parseStatus      ParseStatus       @default(PENDING)
+  parsingError     String?
+  // Set by JobDescriptionClassifierService after parse() — null if outside the covered taxonomy.
+  occupationFamily OccupationFamily?
+  specialization   String?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
-  createdBy         User?              @relation("JobDescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization      Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy         User?                        @relation("JobDescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   applications      Application[]
   skills            JobSkill[]
   evaluationConfigs EvaluationConfig[]
+  scoringBatchItems ScoringBatchJobDescription[]
 
+  @@index([organizationId])
   @@index([createdById])
   @@index([title])
   @@index([companyName])
@@ -215,6 +333,7 @@ model JobSkill {
 // resumeId is required and must belong to the candidate — enforced at application layer.
 model Application {
   id               String            @id @default(cuid())
+  organizationId   String
   candidateId      String
   jobDescriptionId String
   resumeId         String
@@ -227,14 +346,16 @@ model Application {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
-  candidate      Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  jobDescription JobDescription @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  candidate      Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobDescription JobDescription     @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
   // onDelete: Restrict — do not allow deleting a resume that is tied to an application.
-  resume         Resume         @relation(fields: [resumeId], references: [id], onDelete: Restrict)
-  createdBy      User?          @relation("ApplicationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  resume         Resume             @relation(fields: [resumeId], references: [id], onDelete: Restrict)
+  createdBy      User?              @relation("ApplicationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   evaluations    Evaluation[]
   events         ApplicationEvent[]
 
+  @@index([organizationId])
   @@index([candidateId])
   @@index([jobDescriptionId])
   @@index([resumeId])
@@ -275,23 +396,27 @@ model ApplicationEvent {
 // ]
 // totalWeight must equal 1.0. Enforced at application layer.
 model EvaluationConfig {
-  id               String   @id @default(cuid())
-  jobDescriptionId String?
-  createdById      String?
-  name             String
-  description      String?
-  isDefault        Boolean  @default(false)
+  id                 String   @id @default(cuid())
+  organizationId     String
+  jobDescriptionId   String?
+  createdById        String?
+  name               String
+  description        String?
+  isDefault          Boolean  @default(false)
   criteriaDefinition Json
   // Must equal sum of all criterion weights. Stored for fast validation.
-  totalWeight      Float
-  version          String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  totalWeight        Float
+  version            String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   jobDescription JobDescription? @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
   createdBy      User?           @relation("EvaluationConfigCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   evaluations    Evaluation[]
+  scoringBatches ScoringBatch[]
 
+  @@index([organizationId])
   @@index([jobDescriptionId])
   @@index([createdById])
   @@index([isDefault])
@@ -307,15 +432,16 @@ model EvaluationConfig {
 // overallScore range: 0.0–100.0
 // Computed as: Σ(criterionScore.scoreNormalized * criterionScore.weight) * 100
 model Evaluation {
-  id            String           @id @default(cuid())
-  applicationId String
-  configId      String?
-  createdById   String?
-  status        EvaluationStatus @default(PENDING)
+  id             String           @id @default(cuid())
+  organizationId String
+  applicationId  String
+  configId       String?
+  createdById    String?
+  status         EvaluationStatus @default(PENDING)
 
   // Final score 0.0–100.0. Derived from EvaluationCriterionScore rows.
   // EvaluationCriterionScore is source of truth — this field is a computed cache.
-  overallScore  Float?
+  overallScore Float?
 
   summary            String?
   explanation        String?
@@ -326,24 +452,26 @@ model Evaluation {
   evidenceMap        Json?
 
   // AI model tracking — used for reproducibility and debugging.
-  modelProvider  String?
-  modelName      String?
-  modelVersion   String?
-  promptVersion  String?
+  modelProvider   String?
+  modelName       String?
+  modelVersion    String?
+  promptVersion   String?
   evaluationError String?
 
   startedAt   DateTime?
   completedAt DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  application           Application                  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  config                EvaluationConfig?            @relation(fields: [configId], references: [id], onDelete: SetNull)
-  createdBy             User?                        @relation("EvaluationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization          Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  application           Application                   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  config                EvaluationConfig?             @relation(fields: [configId], references: [id], onDelete: SetNull)
+  createdBy             User?                         @relation("EvaluationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   criterionScores       EvaluationCriterionScore[]
   skills                EvaluationSkill[]
   interviewQuestionRows EvaluationInterviewQuestion[]
 
+  @@index([organizationId])
   @@index([applicationId])
   @@index([configId])
   @@index([createdById])
@@ -355,16 +483,16 @@ model Evaluation {
 // weight: must match the corresponding entry in EvaluationConfig.criteriaDefinition
 // Contribution to overallScore = scoreNormalized * weight * 100
 model EvaluationCriterionScore {
-  id             String        @id @default(cuid())
-  evaluationId   String
-  criterion      CriterionName
-  weight         Float
+  id              String        @id @default(cuid())
+  evaluationId    String
+  criterion       CriterionName
+  weight          Float
   // 0.0 = no match, 1.0 = perfect match
   scoreNormalized Float
-  reason         String?
+  reason          String?
   // Array of evidence snippets extracted from CV/JD supporting this score.
-  evidence       Json?
-  createdAt      DateTime      @default(now())
+  evidence        Json?
+  createdAt       DateTime      @default(now())
 
   evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
 
@@ -410,4 +538,295 @@ model EvaluationInterviewQuestion {
 
   @@index([evaluationId])
   @@index([linkedSkill])
+}
+
+// ─────────────────────────────────────────────
+// SCORING BATCH (CV × JD matrix scoring)
+// ─────────────────────────────────────────────
+
+// One batch = "score N resumes against M job descriptions". Deliberately
+// separate from Candidate/Resume/Application/Evaluation — forcing every
+// exploratory batch item into the full CRM pipeline would pollute it with
+// data the recruiter hasn't decided to act on yet. See PLAN.md Phase 1.2
+// for full rationale. Only exists for enterprise (persisted) batches — the
+// public/anonymous tier uses an equivalent ephemeral Redis representation
+// instead (Phase 4), never a row here.
+model ScoringBatch {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  createdById        String
+  name               String?
+  status             ScoringBatchStatus @default(PENDING)
+  evaluationConfigId String?
+  totalCvCount       Int                @default(0)
+  totalJdCount       Int                @default(0)
+  totalPairCount     Int                @default(0)
+  completedPairCount Int                @default(0)
+  failedPairCount    Int                @default(0)
+  notifyWebhookUrl   String?
+  notifyEmail        String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization     Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        User                         @relation("ScoringBatchCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  evaluationConfig EvaluationConfig?            @relation(fields: [evaluationConfigId], references: [id], onDelete: SetNull)
+  resumeItems      ScoringBatchResume[]
+  jdItems          ScoringBatchJobDescription[]
+  results          ScoringBatchResult[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// One CV within a batch. candidateId is only set once this item has been
+// "promoted" into the durable Candidate/Resume pipeline (Phase 5) — until
+// then it lives entirely inside this row (rawText/parsedData).
+// fileAssetId is nullable — a CV submitted as pasted/typed text (AI service
+// /parse/resume raw_text path) has no backing file at all.
+model ScoringBatchResume {
+  id             String      @id @default(cuid())
+  batchId        String
+  fileAssetId    String?
+  checksum       String?
+  candidateLabel String?
+  status         ParseStatus @default(PENDING)
+  rawText        String?
+  parsedData     Json?
+  parsingError   String?
+  candidateId    String?
+  // Set once, on first promote() call — lets a repeat promote of the same
+  // item reuse this Resume instead of creating a duplicate.
+  resumeId       String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  batch     ScoringBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  fileAsset FileAsset?           @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
+  candidate Candidate?           @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  resume    Resume?              @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  results   ScoringBatchResult[]
+
+  @@unique([batchId, fileAssetId])
+  @@index([batchId])
+  @@index([status])
+  @@index([checksum])
+}
+
+// One JD within a batch. jobDescriptionId is only set once "promoted"
+// (Phase 5) — until then rawText/parsedData live entirely on this row.
+// Exactly one of fileAssetId or rawText is expected to be set at creation
+// time: a file-based JD (AI service /parse/job-description signed_url path)
+// has no rawText until parsing completes; a text-pasted JD has no file.
+model ScoringBatchJobDescription {
+  id               String            @id @default(cuid())
+  batchId          String
+  label            String?
+  fileAssetId      String?
+  rawText          String?
+  status           ParseStatus       @default(PENDING)
+  parsedData       Json?
+  parsingError     String?
+  jobDescriptionId String?
+  // Set by JobDescriptionClassifierService right after parsedData succeeds — null if outside the covered taxonomy.
+  occupationFamily OccupationFamily?
+  specialization   String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  batch          ScoringBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  fileAsset      FileAsset?           @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
+  jobDescription JobDescription?      @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
+  results        ScoringBatchResult[]
+
+  @@index([batchId])
+  @@index([status])
+}
+
+// One scored cell in the CV × JD matrix. Mirrors the shape of
+// Evaluation/EvaluationCriterionScore/EvaluationSkill/EvaluationInterviewQuestion
+// but flattened into JSON columns instead of normalized child tables, since
+// batch cells are read as a whole (never queried by individual criterion/skill)
+// and this avoids N×M×(criteria+skills+questions) row explosion.
+model ScoringBatchResult {
+  id                 String           @id @default(cuid())
+  batchId            String
+  resumeItemId       String
+  jdItemId           String
+  status             EvaluationStatus @default(PENDING)
+  overallScore       Float?
+  summary            String?
+  criteria           Json?
+  skills             Json?
+  explanation        String?
+  skillGapSummary    String?
+  interviewQuestions Json?
+  evidenceMap        Json?
+  error              String?
+  scoredAt           DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  batch      ScoringBatch               @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  resumeItem ScoringBatchResume         @relation(fields: [resumeItemId], references: [id], onDelete: Cascade)
+  jdItem     ScoringBatchJobDescription @relation(fields: [jdItemId], references: [id], onDelete: Cascade)
+
+  @@unique([resumeItemId, jdItemId])
+  @@index([batchId])
+  @@index([overallScore])
+}
+
+// ─────────────────────────────────────────────
+// INTERVIEW QUESTION ONTOLOGY (Phase 7 foundation)
+// ─────────────────────────────────────────────
+
+// Reusable question bank for vector-retrieval-backed interview question
+// generation, replacing the current pure template output of
+// build_interview_questions() (AI service). Separate from
+// EvaluationInterviewQuestion (which stores the questions actually shown
+// for one Evaluation) — this table is the shared knowledge base retrieval
+// draws from. See PLAN.md Phase 7 for the full design rationale (why
+// occupation_family/enablers/business_context instead of the IT-biased
+// domain/tech_stack/project_archetype first draft).
+enum OccupationFamily {
+  IT
+  MARKETING
+  DESIGN
+  DATA
+  PRODUCT
+  SALES
+  LEGAL
+}
+
+enum CompetencyType {
+  HARD_SKILL
+  TOOL_SKILL
+  KNOWLEDGE_AREA
+  SOFT_SKILL
+  METHODOLOGY
+  COMPLIANCE
+}
+
+enum AssessmentTarget {
+  RECALL
+  APPLICATION
+  ANALYSIS
+  DECISION_MAKING
+  COMMUNICATION
+  LEADERSHIP
+  OWNERSHIP
+}
+
+enum ExperienceBucket {
+  ZERO_TO_ONE
+  TWO_TO_FOUR
+  FIVE_TO_EIGHT
+  EIGHT_PLUS
+}
+
+enum AutonomyLevel {
+  WORKS_INDEPENDENTLY
+  LEADS_PROJECTS
+  DEFINES_STRATEGY
+  MANAGES_PEOPLE
+}
+
+enum InterviewQuestionType {
+  EXPERIENCE_VALIDATION
+  ARTIFACT_DISCUSSION
+  DECISION_MAKING
+  BEHAVIORAL_EVIDENCE
+  REFLECTION
+  // General technical/domain knowledge question with no personal-experience
+  // or trade-off-decision framing (e.g. "explain the CAP theorem") — the
+  // original 5 values were designed for the CV-personalized 40% bucket
+  // (per PLAN.md Phase 7) and have no honest fit for pure JD-skill trivia,
+  // which real seed data surfaced immediately.
+  KNOWLEDGE_CHECK
+}
+
+enum InterviewQuestionSource {
+  SEED
+  AI_GENERATED
+}
+
+enum QuestionQualityGateStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model InterviewQuestionEntry {
+  id           String @id @default(cuid())
+  questionText String
+
+  occupationFamily OccupationFamily
+  specialization   String
+  enablers         String[]
+  businessContext  String
+
+  competency     String
+  competencyType CompetencyType
+
+  assessmentTarget AssessmentTarget
+
+  experienceBucket ExperienceBucket
+  autonomyLevel    AutonomyLevel
+
+  questionType InterviewQuestionType
+
+  rubric String[]
+
+  // pgvector column — Prisma has no native vector type, so raw SQL
+  // ($queryRaw/$executeRaw) is required for embedding writes and
+  // similarity search until retrieval is implemented (next branch).
+  // Dimension 768 matches Gemini text-embedding-004 — chosen because
+  // GEMINI_API_KEY is already configured (unused) in both repos, avoiding
+  // a new embedding provider/credential.
+  embedding Unsupported("vector(768)")?
+
+  source            InterviewQuestionSource   @default(SEED)
+  qualityGateStatus QuestionQualityGateStatus @default(PENDING_REVIEW)
+  usageCount        Int                       @default(0)
+  lastUsedAt        DateTime?
+
+  // Traceability back to the batch/items that triggered an AI-fallback
+  // generation — null for seed data. No FK: this table must outlive any
+  // single batch (public batches are ephemeral/Redis-only, see Phase 4).
+  originBatchId      String?
+  originResumeItemId String?
+  originJdItemId     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([occupationFamily, specialization])
+  @@index([questionType])
+  @@index([qualityGateStatus])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────
+
+// Opt-in via @AuditLog() decorator (see AuditLogInterceptor) — not a
+// global request log, only sensitive mutations explicitly tagged.
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  actorUserId    String?
+  action         String
+  resourceType   String
+  resourceId     String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
 }

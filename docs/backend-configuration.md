@@ -1,0 +1,2426 @@
+# Backend Configuration
+
+**Project:** AI Recruiter Mini — Backend Configuration  
+**Framework:** NestJS · TypeScript · PostgreSQL · Prisma ORM · Supabase Storage  
+**Scope:** Comprehensive backend setup, database models, API conventions, and domain architecture.
+
+---
+
+## 1. Purpose
+
+The **AI Recruiter Mini Backend** is a NestJS application designed to power an internal recruiter dashboard for AI-assisted candidate screening.
+
+### Key Responsibilities
+
+- Receive and store uploaded CV files in Supabase Storage
+- Persist structured data in PostgreSQL using Prisma ORM
+- Parse CV and JD data into normalized, queryable JSON
+- Match candidate skills against job requirements
+- Calculate weighted evaluation scores
+- Generate AI-powered explanations and interview questions
+- Provide health checks for all critical services
+- Enforce strict request validation and standardized responses
+
+---
+
+## 2. Project Structure
+
+```
+AI-RECRUITER-MINI-BACKEND
+├── dist                    # Compiled JavaScript
+├── docs                    # Documentation
+├── node_modules            # Dependencies
+├── prisma                  # Database schema
+├── src                     # Source code
+├── test                    # Test files
+├── .env                    # Environment variables (local)
+├── .env.example            # Environment template
+├── package.json            # Project metadata
+└── tsconfig.json           # TypeScript config
+```
+
+### Source Code Organization
+
+```
+src/
+├── common/                 # Shared building blocks
+│   ├── constants/          # Shared constants
+│   ├── decorators/         # Custom decorators
+│   ├── dto/                # Shared DTOs
+│   ├── enums/              # Shared enums
+│   ├── exceptions/         # Custom exceptions
+│   ├── filters/            # Exception filters
+│   ├── guards/             # Auth guards
+│   ├── interceptors/       # Response/logging interceptors
+│   ├── pipes/              # Validation pipes
+│   ├── types/              # Shared TypeScript types
+│   └── utils/              # Pure utility functions
+│
+├── config/                 # Environment configuration
+│   ├── app.config.ts
+│   ├── database.config.ts
+│   ├── env.validation.ts
+│   ├── redis.config.ts
+│   └── supabase.config.ts
+│
+├── database/               # Database layer
+│   └── prisma/
+│       ├── prisma.module.ts
+│       └── prisma.service.ts
+│
+├── integrations/           # External service integrations
+│   ├── ai/                 # LLM provider (Gemini)
+│   ├── parsing/            # CV/JD text extraction
+│   ├── redis/              # Cache layer (optional)
+│   └── storage/            # Supabase Storage
+│
+├── modules/                # Domain modules
+│   ├── applications/       # Application tracking
+│   ├── candidates/         # Candidate profiles
+│   ├── evaluations/        # Scoring and generation
+│   │   ├── generation/
+│   │   ├── matching/
+│   │   ├── parsing/
+│   │   └── scoring/
+│   ├── files/              # File upload
+│   ├── health/             # Health checks
+│   ├── job-descriptions/   # Job postings
+│   └── resumes/            # CV management
+│
+├── app.module.ts           # Root module
+└── main.ts                 # Application entry point
+```
+
+---
+
+## 3. Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Client Application                     │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ↓
+┌─────────────────────────────────────────────────────────┐
+│              NestJS REST API (/api)                      │
+│  • Global Validation Pipe                               │
+│  • Global Response Interceptor                          │
+│  • Global Exception Filter                              │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+        ┌──────────────┼──────────────┐
+        ↓              ↓              ↓
+   ┌─────────┐  ┌──────────┐  ┌─────────────┐
+   │Candidates
+   │          │
+   ├─────────┤  ├──────────┤  ├─────────────┤
+   │Resumes  │  │Files     │  │Job Desc     │
+   ├─────────┤  ├──────────┤  ├─────────────┤
+   │Apps     │  │Health    │  │Evaluations  │
+   └────┬────┘  └────┬─────┘  └──────┬──────┘
+        │            │               │
+        └────────────┼───────────────┘
+                     ↓
+        ┌─────────────────────────────┐
+        │    Integrations Layer       │
+        ├─────────────────────────────┤
+        │ • AI/LLM (Gemini)           │
+        │ • Parsing (PDF/DOCX)        │
+        │ • Storage (Supabase)        │
+        │ • Cache (Redis - optional)  │
+        └────────────┬────────────────┘
+                     │
+        ┌────────────┼────────────┐
+        ↓            ↓            ↓
+   ┌──────────┐ ┌────────┐ ┌────────────┐
+   │PostgreSQL│ │Supabase│ │Redis       │
+   │          │ │Storage │ │(optional)  │
+   └──────────┘ └────────┘ └────────────┘
+```
+
+---
+
+## 4. Application Bootstrap
+
+### Entry Point
+
+File: `src/main.ts`
+
+This file sets up the global NestJS configuration when the application starts.
+
+### 4.1 Global API Prefix
+
+All routes are prefixed with `/api`:
+
+```
+GET /api/health
+POST /api/candidates
+GET /api/candidates/[id]
+```
+
+### 4.2 CORS Configuration
+
+CORS is enabled globally to allow frontend requests:
+
+```typescript
+app.enableCors({
+  origin: true,           // Allow all origins (development)
+  credentials: true,      // Allow credentials
+});
+```
+
+⚠️ **Production:** Restrict to trusted domains:
+
+```typescript
+app.enableCors({
+  origin: ['https://yourdomain.com'],
+  credentials: true,
+});
+```
+
+### 4.3 Global Validation Pipe
+
+All incoming requests are automatically validated:
+
+```typescript
+app.useGlobalPipes(
+  new ValidationPipe({
+    whitelist: true,              // Remove unknown fields
+    transform: true,              // Convert to DTO instances
+    forbidNonWhitelisted: true,   // Reject unknown fields
+  }),
+);
+```
+
+**Result:** Invalid or unknown fields are rejected before reaching controllers.
+
+### 4.4 Global Response Interceptor
+
+All successful responses are wrapped in a standard format.
+
+File: `src/common/interceptors/transform-response.interceptor.ts`
+
+**Example Success Response:**
+
+```json
+{
+  "success": true,
+  "message": "Candidate fetched successfully",
+  "data": {
+    "id": "cand_123",
+    "fullName": "Nguyen Van A"
+  }
+}
+```
+
+**Example Paginated Response:**
+
+```json
+{
+  "success": true,
+  "message": "Candidates fetched successfully",
+  "data": [
+    { "id": "cand_123", "fullName": "Nguyen Van A" },
+    { "id": "cand_124", "fullName": "Tran Van B" }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 10,
+    "total": 25,
+    "totalPages": 3
+  }
+}
+```
+
+### 4.5 Global Exception Filter
+
+All errors are normalized to a consistent format.
+
+File: `src/common/filters/http-exception.filter.ts`
+
+**Example Error Response:**
+
+```json
+{
+  "success": false,
+  "statusCode": 400,
+  "message": "Validation failed",
+  "errors": [
+    {
+      "field": "title",
+      "message": "title should not be empty"
+    }
+  ],
+  "timestamp": "2026-04-25T10:30:00.000Z",
+  "path": "/api/job-descriptions"
+}
+```
+
+**Example Server Error:**
+
+```json
+{
+  "success": false,
+  "statusCode": 500,
+  "message": "Internal server error",
+  "errors": [],
+  "timestamp": "2026-04-25T10:30:00.000Z",
+  "path": "/api/example"
+}
+```
+
+### 4.6 Swagger Documentation
+
+API documentation is available during development:
+
+```
+URL: http://localhost:3000/docs
+```
+
+Swagger is **disabled in production** for security.
+
+**Available API Tags:**
+- `health`
+- `candidates`
+- `resumes`
+- `job-descriptions`
+- `applications`
+- `evaluations`
+- `files`
+
+---
+
+## 5. Application Module
+
+File: `src/app.module.ts`
+
+The root NestJS module imports:
+
+- **ConfigModule** — Loads and validates environment variables
+- **PrismaModule** — Database access (global)
+- **StorageModule** — Supabase Storage (global)
+- **RedisModule** — Optional caching (global)
+- **HealthModule** — Service health checks
+
+Domain modules (candidates, resumes, etc.) will be added here as they are implemented.
+
+---
+
+## 6. Environment Configuration
+
+### Configuration Files
+
+```
+src/config/
+├── app.config.ts          # App port and environment
+├── database.config.ts     # Database connection
+├── env.validation.ts      # Validation schema
+├── redis.config.ts        # Redis URL (optional)
+└── supabase.config.ts     # Supabase credentials
+```
+
+### How Configuration Works
+
+1. Environment variables are loaded from `.env`
+2. Joi schema in `env.validation.ts` validates them
+3. Configuration files export typed config objects
+4. Services inject `ConfigService` to access values
+
+---
+
+## 7. Environment Variables
+
+### Required Variables
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (backend only) |
+
+### Optional Variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NODE_ENV` | `development` | Application environment |
+| `PORT` | `3000` | Server port |
+| `SUPABASE_BUCKET` | `cv-files` | Storage bucket name |
+| `REDIS_URL` | — | Redis connection (optional) |
+| `GEMINI_API_KEY` | — | Gemini API key |
+| `GEMINI_MODEL` | `gemini-3-flash-preview` | Gemini model |
+| `MAX_FILE_SIZE_MB` | `5` | Max upload size in MB |
+
+### Example .env File
+
+```env
+# Application
+NODE_ENV=development
+PORT=3000
+
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/ai_recruiter_mini"
+DIRECT_URL="postgresql://user:password@localhost:5432/ai_recruiter_mini"
+
+# Storage
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+SUPABASE_BUCKET="cv-files"
+
+# Cache (Optional)
+REDIS_URL="redis://localhost:6379"
+
+# AI
+GEMINI_API_KEY="your-gemini-api-key"
+GEMINI_MODEL="gemini-3-flash-preview"
+
+# Upload
+MAX_FILE_SIZE_MB=5
+```
+
+---
+
+## 8. Database Layer
+
+### Prisma Setup
+
+File: `src/database/prisma/prisma.service.ts`
+
+The Prisma service:
+- Connects to PostgreSQL on application startup
+- Disconnects gracefully on shutdown
+- Provides access to all database models
+
+### Available Models
+
+- `User` — Internal system users
+- `FileAsset` — Uploaded file metadata and storage reference
+- `Candidate` — Candidate profiles
+- `Resume` — Candidate CV record and parsing state
+- `JobDescription` — Job postings
+- `JobSkill` — Skills extracted from JD
+- `Application` — Candidate applications
+- `ApplicationEvent` — Application audit trail
+- `Evaluation` — Scoring results
+- `EvaluationCriterionScore` — Score breakdown
+- `EvaluationSkill` — Matched/missing skills
+- `EvaluationInterviewQuestion` — Generated questions
+
+---
+
+## 9. Core Domain Models
+
+### FileAsset
+
+Represents an uploaded file stored in Supabase Storage.
+
+`FileAsset` is the source of truth for uploaded file metadata.
+
+**Key Fields:**
+- `fileName` — Original uploaded file name
+- `originalFileUrl` — Public or accessible file URL
+- `storageKey` — Supabase storage object key
+- `fileType` — Supported file type, such as PDF or DOCX
+- `fileSizeBytes` — File size in bytes
+- `checksum` — File checksum used for duplicate detection
+- `bucket` — Supabase storage bucket
+- `status` — File lifecycle status, such as ACTIVE or DELETED
+- `uploadedAt` — Upload timestamp
+- `deletedAt` — Soft delete timestamp
+
+### Candidate
+
+Represents a candidate profile.
+
+**Key Fields:**
+- `fullName` — Candidate name
+- `primaryEmail` — Email address
+- `primaryPhone` — Phone number
+- `linkedinUrl`, `githubUrl`, `portfolioUrl` — Professional links
+- `location` — Candidate location
+- `normalizedProfile` — Aggregated data across all resumes
+- `identityConfidence` — Confidence level for profile linking
+
+### Resume
+
+Represents a candidate CV record.
+
+A resume belongs to a candidate and references one uploaded file through `fileAssetId`.
+
+**Key Fields:**
+- `candidateId` — Owner candidate
+- `fileAssetId` — Uploaded file reference
+- `rawText` — Extracted text from CV
+- `parsedData` — Structured CV in JSON format
+- `parseStatus` — Lifecycle status: PENDING, PROCESSING, SUCCESS, FAILED
+- `parserVersion` — Parser version used for extraction
+- `parsingError` — Error message if parsing failed
+
+File metadata such as `fileName`, `storageKey`, `fileType`, `fileSizeBytes`, and `checksum` belongs to `FileAsset`, not `Resume`.
+
+**Parsed CV Structure:**
+```json
+{
+  "personal": { "name": "", "email": "" },
+  "summary": "Professional summary",
+  "skills": ["Skill 1", "Skill 2"],
+  "education": [{ "school": "", "degree": "" }],
+  "experience": [{ "company": "", "title": "", "duration": "" }],
+  "projects": [{ "name": "", "description": "" }],
+  "certifications": [],
+  "languages": []
+}
+```
+
+### Job Description
+
+Represents a job posting.
+
+**Key Fields:**
+- `title` — Job title
+- `companyName` — Company name
+- `location` — Job location
+- `rawText` — Original JD text
+- `parsedData` — Structured JD in JSON format
+- `parseStatus` — Lifecycle status
+- `isActive` — Whether the JD is active
+
+**Parsed JD Structure:**
+```json
+{
+  "responsibilities": ["Responsibility 1", "Responsibility 2"],
+  "requirements": ["Requirement 1", "Requirement 2"],
+  "niceToHave": ["Nice to have 1"],
+  "minExperienceYears": 3,
+  "educationRequirement": "Bachelor's degree",
+  "domainKeywords": ["AI", "ML"]
+}
+```
+
+### Application
+
+Links a candidate, resume, and job description together.
+
+**Key Fields:**
+- `candidateId`, `resumeId`, `jobDescriptionId` — References
+- `status` — Application status
+- `createdById` — User who created the application
+- `appliedAt` — Application timestamp
+- `notes` — Internal notes
+
+**Important Rule:** The `resumeId` must belong to the selected `candidateId`.
+
+### Evaluation
+
+Stores the result of one scoring run.
+
+**Key Fields:**
+- `applicationId` — Related application
+- `status` — Evaluation status (PENDING, PROCESSING, COMPLETED, FAILED)
+- `overallScore` — Final score (0-100)
+- `explanation` — Scoring explanation
+- `skillGapSummary` — Summary of missing skills
+- `interviewQuestions` — JSON snapshot of questions
+- `startedAt`, `completedAt` — Timestamps
+
+**Score Formula:**
+```
+overallScore = Σ(criterionScore × weight) × 100
+```
+
+---
+
+## 10. Storage Integration
+
+### Supabase Storage
+
+File: `src/integrations/storage/supabase-storage.service.ts`
+
+**Responsibilities:**
+- Upload file buffers to Supabase
+- Generate public URLs
+- Delete files from storage
+- Validate bucket existence
+
+**Supported File Types:**
+- PDF
+- DOCX (Word documents)
+
+**Upload Rules:**
+
+| Rule | Value |
+|---|---|
+| Max file size | 5 MB (configurable) |
+| Allowed bucket | `cv-files` |
+| Storage folder | `resumes/` |
+| Key format | `resumes/{uuid}.{extension}` |
+
+**Storage Key Example:**
+```
+resumes/550e8400-e29b-41d4-a716-446655440000.pdf
+```
+
+### Upload Validation Flow
+
+```
+Receive file
+  ↓
+Validate MIME type
+  ↓
+Validate file size
+  ↓
+Generate unique storage key
+  ↓
+Upload to Supabase Storage
+  ↓
+Return public URL & storage key
+```
+
+### FileAsset Rules
+
+- `FileAsset` is the source of truth for uploaded file metadata.
+- `Resume` references uploaded files through `fileAssetId`.
+- `Resume` should not duplicate file metadata such as file name, storage key, file type, file size, or checksum.
+- `DELETE /api/files/:id` should perform a controlled delete through `FileAsset`.
+- A file that is already linked to a `Resume` should not be physically deleted without checking domain rules.
+
+---
+
+## 11. Redis Integration (Optional)
+
+File: `src/integrations/redis/redis.service.ts`
+
+Redis is **optional** and disabled if `REDIS_URL` is not set.
+
+**Good Use Cases:**
+- Cache for expensive parsing operations
+- Temporary evaluation progress tracking
+- Short-lived job state
+
+**Bad Use Cases:**
+- Storing candidate data (use PostgreSQL)
+- Storing evaluation results (use PostgreSQL)
+- Permanent application state
+
+---
+
+## 12. Health Check Endpoint
+
+### Endpoint
+
+```
+GET /api/health
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "service": "ai-recruiter-mini-backend",
+    "status": "healthy",
+    "database": "ok",
+    "redis": "ok",
+    "storage": "ok",
+    "timestamp": "2026-04-25T10:30:00.000Z"
+  }
+}
+```
+
+### Checks Performed
+
+| Service | Check |
+|---|---|
+| Database | Runs `SELECT 1` through Prisma |
+| Redis | Runs `PING` (only if enabled) |
+| Storage | Verifies Supabase bucket exists |
+
+---
+
+## 13. API Response Convention
+
+### Standard Response Format
+
+**Successful Response:**
+```json
+{
+  "success": true,
+  "message": "Resource fetched successfully",
+  "data": { }
+}
+```
+
+**Paginated Response:**
+```json
+{
+  "success": true,
+  "message": "Resources fetched successfully",
+  "data": [ ],
+  "meta": {
+    "page": 1,
+    "limit": 10,
+    "total": 100,
+    "totalPages": 10
+  }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "statusCode": 400,
+  "message": "Validation failed",
+  "errors": [
+    { "field": "email", "message": "Invalid email format" }
+  ],
+  "timestamp": "2026-04-25T10:30:00.000Z",
+  "path": "/api/candidates"
+}
+```
+
+---
+
+## 14. Validation Rules
+
+All DTOs must explicitly define allowed fields using `class-validator`:
+
+```typescript
+export class CreateCandidateDto {
+  @IsString()
+  fullName!: string;
+
+  @IsOptional()
+  @IsEmail()
+  primaryEmail?: string;
+}
+```
+
+**Rules:**
+- Unknown fields are **rejected**
+- All field types are **transformed** automatically
+- Validation errors are **detailed**
+
+---
+
+## 15. Pagination Convention
+
+Paginated endpoints follow this pattern:
+
+```typescript
+// Query Parameters
+page: number = 1
+limit: number = 10
+search?: string
+sortBy?: string = 'createdAt'
+sortOrder?: 'asc' | 'desc' = 'desc'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Candidates fetched successfully",
+  "data": [ ],
+  "meta": {
+    "page": 1,
+    "limit": 10,
+    "total": 100,
+    "totalPages": 10
+  }
+}
+```
+
+---
+
+## 16. Exception Handling
+
+### AppException Class
+
+File: `src/common/exceptions/app.exception.ts`
+
+Used for all application-level errors:
+
+```typescript
+throw new AppException('Candidate not found', 404);
+throw new AppException('Invalid file type', 400);
+throw new AppException('Resume has not been parsed', 409);
+```
+
+### HTTP Status Codes
+
+| Scenario | Code |
+|---|---|
+| Invalid input | 400 |
+| Unauthorized | 401 |
+| Forbidden | 403 |
+| Resource not found | 404 |
+| Conflict or invalid state | 409 |
+| Server error | 500 |
+| External service failure | 502 |
+
+---
+
+## 17. Evaluation Scoring System
+
+### Scoring Criteria
+
+The evaluation uses weighted criteria:
+
+| Criterion | Weight | Description |
+|---|---|---|
+| SKILLS_MATCH | 35% | Required and preferred skill alignment |
+| EXPERIENCE_RELEVANCE | 30% | Work experience relevance to JD |
+| PROJECT_RELEVANCE | 15% | Project relevance to the role |
+| EDUCATION_CERTIFICATION | 10% | Education and certification fit |
+| KEYWORD_DOMAIN_ALIGNMENT | 10% | Domain and keyword alignment |
+
+**Total Weight:** 100%  
+**Score Range:** 0.0 to 100.0
+
+### Scoring Formula
+
+```
+for each criterion:
+  criterionContribution = scoreNormalized × weight × 100
+  
+overallScore = Σ(criterionContribution)
+```
+
+Each criterion score is stored as 0.0 to 1.0, then normalized.
+
+---
+
+## 18. Parsing Status Lifecycle
+
+Both resumes and job descriptions follow this status flow:
+
+```
+PENDING
+  ↓
+PROCESSING
+  ↓
+SUCCESS (success) or FAILED (failure)
+```
+
+If parsing fails, the error is stored in:
+- `Resume.parsingError`
+- `JobDescription.parsingError`
+
+---
+
+## 19. Module Structure
+
+### Standard Module Folders
+
+Each domain module should contain:
+
+```
+module-name/
+├── api/                # API functions that call backend
+├── components/         # UI components (if any)
+├── dto/                # Data Transfer Objects
+├── entities/           # Database entities
+├── services/           # Business logic
+└── module.ts           # Module definition
+```
+
+### Current Modules
+
+| Module | Purpose |
+|---|---|
+| `candidates` | Candidate profile management |
+| `resumes` | CV file and metadata management |
+| `files` | File upload and validation |
+| `job-descriptions` | Job posting management |
+| `applications` | Application tracking |
+| `evaluations` | Scoring and evaluation results |
+| `health` | Service health checks |
+
+---
+
+## 20. Request Flow Examples
+
+### Upload CV Flow
+ 
+```
+POST /api/files/upload
+↓
+Validate MIME type (PDF or DOCX)
+↓
+Validate file size
+↓
+Calculate checksum
+↓
+Generate unique storage key
+↓
+Upload to Supabase Storage
+↓
+Create FileAsset record
+↓
+Return FileAsset metadata
+↓
+POST /api/resumes
+↓
+Validate Candidate exists
+↓
+Validate FileAsset exists and ACTIVE
+↓
+Create Resume record with fileAssetId and parseStatus = PENDING
+↓
+Extract raw text
+↓
+Call AI service to parse resume
+↓
+Update Resume.rawText, Resume.parsedData, and Resume.parseStatus
+```
+
+
+### Evaluation Flow
+
+```
+POST /api/evaluations
+  ↓
+Validate Application exists
+  ↓
+Validate Resume belongs to Candidate
+  ↓
+Validate Resume.parseStatus = SUCCESS
+  ↓
+Validate JobDescription.parseStatus = SUCCESS
+  ↓
+Create Evaluation with status = PENDING
+  ↓
+Set status = PROCESSING
+  ↓
+Match skills (Resume skills vs JobSkill records)
+  ↓
+Create EvaluationSkill records
+  ↓
+Calculate criterion scores
+  ↓
+Create EvaluationCriterionScore records
+  ↓
+Calculate overallScore
+  ↓
+Generate explanation and interview questions
+  ↓
+Set status = COMPLETED
+```
+
+---
+
+## 21. Source of Truth Rules
+
+### File Data
+
+| Data | Source |
+|---|---|
+| File metadata | `FileAsset` table |
+| File URL | `FileAsset.originalFileUrl` |
+| Storage location | `FileAsset.storageKey` |
+| File type | `FileAsset.fileType` |
+| File size | `FileAsset.fileSizeBytes` |
+| File checksum | `FileAsset.checksum` |
+| File lifecycle status | `FileAsset.status` |
+
+### Resume Data
+
+| Data | Source |
+|---|---|
+| Candidate ownership | `Resume.candidateId` |
+| Uploaded file reference | `Resume.fileAssetId` |
+| Extracted text | `Resume.rawText` |
+| Structured CV | `Resume.parsedData` |
+| Parsing lifecycle | `Resume.parseStatus` |
+| Parsing error | `Resume.parsingError` |
+| Candidate profile | `Candidate.normalizedProfile` |
+
+### Job Description Data
+
+| Data | Source |
+|---|---|
+| Original text | JobDescription.rawText |
+| Parsed structure | JobDescription.parsedData |
+| Skills list | **JobSkill table** ⭐ |
+
+⭐ **Important:** Use `JobSkill` for skill matching, not `JobDescription.parsedData`.
+
+### Evaluation Data
+
+| Data | Source |
+|---|---|
+| Criterion scores | **EvaluationCriterionScore** ⭐ |
+| Matched/missing skills | **EvaluationSkill** ⭐ |
+| Interview questions | **EvaluationInterviewQuestion** ⭐ |
+| Final score | Evaluation.overallScore (cached) |
+
+---
+
+## 22. Security Checklist
+
+⚠️ **Before Production:**
+
+- [ ] Restrict CORS origin to trusted domains
+- [ ] Disable Swagger documentation
+- [ ] Add authentication guards
+- [ ] Add request rate limiting
+- [ ] Validate all file uploads before storage
+- [ ] Use signed or private URLs for CV files
+- [ ] Set up logging and monitoring
+- [ ] Never expose SUPABASE_SERVICE_ROLE_KEY
+- [ ] Never commit `.env` to Git
+- [ ] Add input sanitization for text fields
+
+---
+
+## 23. Configuration Summary
+
+| Area | Setup |
+|---|---|
+| Framework | NestJS |
+| Language | TypeScript |
+| API Style | REST |
+| Database | PostgreSQL + Prisma |
+| Storage | Supabase Storage |
+| Cache | Redis (optional) |
+| AI Provider | Gemini |
+| Validation | Global ValidationPipe |
+| Response Format | Standardized DTO |
+| Error Handling | Global exception filter |
+| API Documentation | Swagger (dev only) |
+
+---
+
+## 24. Next Implementation Steps
+
+1. **Add domain modules to AppModule** when each is ready
+2. **Implement file asset upload flow** with validation, Supabase upload, checksum, and `FileAsset` persistence
+3. **Implement candidates and resumes** creation flow
+4. **Implement job description** parsing and JobSkill extraction
+5. **Implement application** linking and tracking
+6. **Seed default evaluation config** with criteria and weights
+7. **Implement evaluation workflow** (matching → scoring → generation)
+8. **Add comprehensive tests** for critical flows
+9. **Set up background workers** for long-running parsing/evaluation
+10. **Add observability** (logging, monitoring, tracing)
+
+---
+
+## 25. Architecture Principles
+
+✅ **Do:**
+- Keep business logic in domain modules
+- Use AppException for predictable errors
+- Store structured data in PostgreSQL
+- Use JobSkill as source of truth for matching
+- Keep integrations separate from domain logic
+- Validate all inputs strictly
+
+❌ **Don't:**
+- Call APIs from common layer
+- Use Redis for persistent data
+- Expose service keys in responses
+- Skip request validation
+- Log sensitive information
+- Mix business logic with infrastructure code
+
+---
+
+## 26. AI Service Integration
+
+### Purpose
+
+The Backend integrates with an internal AI service to handle AI-related tasks such as:
+- Parsing resumes
+- Parsing job descriptions  
+- Scoring applications
+
+**Important:** The Frontend must not call the AI service directly. All AI-related requests go through the Backend.
+
+### Communication Flow
+
+```
+Frontend
+  ↓
+Backend API
+  ↓
+Backend AiService
+  ↓
+AI Service
+```
+
+### Integration Location
+
+AI service integration is placed in:
+
+```
+src/integrations/ai/
+├── ai.module.ts
+├── ai.service.ts
+└── types/
+    └── ai-service.types.ts
+```
+
+| File | Purpose |
+|------|---------|
+| `ai.module.ts` | Configures the AI integration module and HTTP client |
+| `ai.service.ts` | Contains methods for calling the AI service |
+| `types/ai-service.types.ts` | Defines request and response contracts |
+
+This layer is responsible only for communication with the AI service. Business logic remains in domain modules such as resumes, job descriptions, evaluations, and health.
+
+### Environment Variables
+
+```
+AI_SERVICE_URL=http://localhost:8000
+AI_REQUEST_TIMEOUT_MS=30000
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `AI_SERVICE_URL` | Base URL of the AI service |
+| `AI_REQUEST_TIMEOUT_MS` | Timeout for requests to the AI service |
+
+### Backend AiService Methods
+
+| Method | AI Endpoint | Purpose |
+|--------|------------|---------|
+| `checkHealth()` | `GET /health` | Checks AI service status |
+| `parseResume()` | `POST /parse/resume` | Parses raw resume text |
+| `parseJobDescription()` | `POST /parse/job-description` | Parses raw job description text |
+| `scoreApplication()` | `POST /score/application` | Scores a resume against a job description |
+
+### Error Handling
+
+Errors from the AI service are mapped before being returned by the Backend. This keeps API responses consistent and prevents raw HTTP client errors from leaking to the Frontend.
+
+#### Common Cases
+
+| Scenario | Backend Behavior |
+|----------|-----------------|
+| AI service unavailable | Return external service error |
+| AI request timeout | Return timeout error |
+| Invalid AI response | Return integration error |
+| AI service returns error | Return mapped backend error |
+
+### Usage in Domain Flow
+
+The AI service is called by backend domain services when needed:
+
+- `ResumesService` calls `parseResume()`
+- `JobDescriptionsService` calls `parseJobDescription()`
+- `EvaluationsService` calls `scoreApplication()`
+- `HealthService` may call `checkHealth()`
+
+The Backend remains the source of truth for persisted data. AI service responses are saved into the database only through the relevant domain workflow.
+
+### Source of Truth Rules
+
+| Data | Source of Truth |
+|------|-----------------|
+| Resume parsed data | `Resume.parsedData` |
+| Job description parsed data | `JobDescription.parsedData` |
+| Job skills used for matching | `JobSkill` table |
+| Evaluation result | `Evaluation` and related evaluation tables |
+
+### Testing
+
+AI service integration should be tested by running the AI service locally and executing Backend integration tests.
+
+#### Expected Local Setup
+
+```
+AI Service: http://localhost:8000
+Backend AiService integration test
+```
+
+#### Test Coverage
+
+A successful test confirms that the Backend can call:
+
+- AI health check
+- Resume parsing
+- Job description parsing
+- Application scoring
+
+---
+
+## 27. File Asset Endpoints
+
+### Purpose
+
+This section defines the Backend file upload endpoints used to manage uploaded CV files.
+
+The file flow is handled through the `FilesModule`. Uploaded files are stored in Supabase Storage, while file metadata is persisted in the `FileAsset` table.
+
+`FileAsset` is the source of truth for uploaded file metadata. `Resume` references uploaded files through `fileAssetId`.
+
+---
+
+### Code Location
+
+```txt
+src/modules/files/
+├── files.module.ts
+├── files.controller.ts
+└── files.service.ts
+
+Shared upload utilities and types are placed in:
+
+src/common/
+├── constants/
+│   └── upload.constants.ts
+├── types/
+│   └── upload-file.type.ts
+└── utils/
+    └── upload-file.util.ts
+```
+
+### File Responsibilities
+
+| File | Purpose |
+|------|---------|
+| src/modules/files/files.module.ts | Registers the files feature module |
+| src/modules/files/files.controller.ts | Defines file API endpoints |
+| src/modules/files/files.service.ts | Handles file upload, lookup, delete, storage integration, and FileAsset persistence |
+| src/common/constants/upload.constants.ts | Defines allowed MIME types, allowed extensions, default bucket, upload folder, and size constants |
+| src/common/types/upload-file.type.ts | Defines shared upload-related TypeScript types |
+| src/common/utils/upload-file.util.ts | Provides reusable upload helpers such as MIME validation, checksum generation, storage key generation, and file type mapping |
+
+### Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | /api/files/upload | Uploads a CV file and creates a FileAsset record |
+| GET | /api/files/:id | Retrieves active file metadata |
+| DELETE | /api/files/:id | Deletes an uploaded file if it is not linked to a resume |
+
+---
+
+## POST /api/files/upload
+
+Uploads a file to Supabase Storage and creates a FileAsset record in the database.
+
+The request uses multipart/form-data.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| file | File | Yes | Uploaded CV file |
+
+**Supported file types:**
+
+- PDF
+- DOCX
+
+### Main Flow
+
+```
+Receive uploaded file
+  ↓
+Validate file exists
+  ↓
+Validate MIME type
+  ↓
+Validate file size
+  ↓
+Calculate checksum
+  ↓
+Generate storage key
+  ↓
+Upload file to Supabase Storage
+  ↓
+Create FileAsset record
+  ↓
+Return FileAsset metadata
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": "file_123",
+    "fileName": "resume.pdf",
+    "originalFileUrl": "https://example.supabase.co/storage/v1/object/public/cv-files/resumes/file.pdf",
+    "storageKey": "resumes/uuid.pdf",
+    "fileType": "PDF",
+    "fileSizeBytes": 123456,
+    "checksum": "sha256-checksum",
+    "bucket": "cv-files",
+    "status": "ACTIVE",
+    "uploadedAt": "2026-04-26T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+## GET /api/files/:id
+
+Returns metadata for an active FileAsset.
+
+### Main Flow
+
+```
+Receive file id
+  ↓
+Find active FileAsset
+  ↓
+Return file metadata
+```
+
+If the file does not exist or has been deleted, the Backend returns 404.
+
+---
+
+## DELETE /api/files/:id
+
+Deletes a file asset if it is not linked to a resume.
+
+The delete flow removes the file from Supabase Storage and then marks the FileAsset record as deleted.
+
+### Main Flow
+
+```
+Receive file id
+  ↓
+Find active FileAsset
+  ↓
+Check if file is linked to any Resume
+  ↓
+Delete file from Supabase Storage
+  ↓
+Update FileAsset status to DELETED
+  ↓
+Return delete result
+```
+
+If the file is already linked to a resume, the Backend returns 409 Conflict.
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": "file_123",
+    "deleted": true
+  }
+}
+```
+
+---
+
+## Validation Rules
+
+| Rule | Behavior |
+|------|----------|
+| Missing file | Return 400 Bad Request |
+| Unsupported file type | Return 400 Bad Request |
+| File size exceeds limit | Return 400 Bad Request |
+| Supabase upload fails | Return external service error |
+| File not found | Return 404 Not Found |
+| File already linked to resume | Return 409 Conflict |
+
+---
+
+## Source of Truth
+
+| Data | Source |
+|------|--------|
+| File metadata | FileAsset table |
+| File URL | FileAsset.originalFileUrl |
+| Storage key | FileAsset.storageKey |
+| File type | FileAsset.fileType |
+| File size | FileAsset.fileSizeBytes |
+| File checksum | FileAsset.checksum |
+| File lifecycle status | FileAsset.status |
+
+Resume should not duplicate file metadata. It should reference uploaded files using fileAssetId.
+
+---
+
+## Notes
+
+- File upload is separated from resume creation.
+- POST /api/files/upload only creates a FileAsset.
+- POST /api/resumes will later use fileAssetId to create a resume for a candidate.
+- A file that is already linked to a resume should not be deleted directly.
+- Supabase Storage stores the actual file, while PostgreSQL stores the file metadata.
+
+---
+
+## 28. Candidate Endpoints
+
+### Purpose
+
+This section defines the Backend candidate endpoints used to manage candidate profile data in the MVP.
+
+The candidate flow is handled through the `CandidatesModule`. Candidate data is stored in the `Candidate` table and can later be linked with resumes, applications, and evaluations.
+
+Candidate profile management is separated from resume upload. A candidate may exist before any resume is uploaded.
+
+---
+
+### Code Location
+
+```txt
+src/modules/candidates/
+├── dto/
+│   ├── candidate-query.dto.ts
+│   ├── create-candidate.dto.ts
+│   └── update-candidate.dto.ts
+├── candidates.module.ts
+├── candidates.controller.ts
+└── candidates.service.ts
+```
+
+### File Responsibilities
+
+| File | Purpose |
+|------|---------|
+| src/modules/candidates/candidates.module.ts | Registers the candidates feature module |
+| src/modules/candidates/candidates.controller.ts | Defines candidate API endpoints |
+| src/modules/candidates/candidates.service.ts | Handles candidate business logic and database access |
+| src/modules/candidates/dto/create-candidate.dto.ts | Defines request validation rules for creating candidates |
+| src/modules/candidates/dto/update-candidate.dto.ts | Defines request validation rules for updating candidates |
+| src/modules/candidates/dto/candidate-query.dto.ts | Defines query parameters for pagination, searching, and sorting |
+
+### Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | /api/candidates | Creates a new candidate profile |
+| GET | /api/candidates | Retrieves paginated candidate profiles |
+| GET | /api/candidates/:id | Retrieves a candidate profile by id |
+| PATCH | /api/candidates/:id | Updates a candidate profile |
+| GET | /api/candidates/:id/resumes | Retrieves resumes that belong to a candidate |
+
+**Note:** DELETE /api/candidates/:id is intentionally not included in the MVP. Candidate deletion requires additional domain rules because candidates may be linked to resumes, applications, and evaluations.
+
+---
+
+## POST /api/candidates
+
+Creates a new candidate profile.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| fullName | string | Yes | Candidate full name |
+| primaryEmail | string | No | Candidate primary email |
+| primaryPhone | string | No | Candidate primary phone number |
+| linkedinUrl | string | No | Candidate LinkedIn profile URL |
+| githubUrl | string | No | Candidate GitHub profile URL |
+| portfolioUrl | string | No | Candidate portfolio URL |
+| location | string | No | Candidate location |
+
+### Main Flow
+
+```
+Receive candidate payload
+  ↓
+Validate request body
+  ↓
+Check duplicate email if primaryEmail is provided
+  ↓
+Create Candidate record
+  ↓
+Return created candidate
+```
+
+### Example Request
+
+```json
+{
+  "fullName": "Nguyen Van A",
+  "primaryEmail": "vana@example.com",
+  "primaryPhone": "0900000001",
+  "location": "Ho Chi Minh City"
+}
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Candidate created successfully",
+  "data": {
+    "id": "candidate_123",
+    "fullName": "Nguyen Van A",
+    "primaryEmail": "vana@example.com",
+    "primaryPhone": "0900000001",
+    "linkedinUrl": null,
+    "githubUrl": null,
+    "portfolioUrl": null,
+    "location": "Ho Chi Minh City",
+    "normalizedProfile": null,
+    "identityConfidence": null,
+    "createdAt": "2026-04-26T10:30:00.000Z",
+    "updatedAt": "2026-04-26T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+## GET /api/candidates
+
+Returns paginated candidate profiles.
+
+### Query Parameters
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| page | number | 1 | Current page |
+| limit | number | 10 | Number of items per page |
+| search | string | — | Search by candidate name, email, phone, or location |
+| sortBy | string | createdAt | Sort field |
+| sortOrder | asc or desc | desc | Sort direction |
+
+### Supported Sort Fields
+
+- createdAt
+- updatedAt
+- fullName
+- primaryEmail
+
+### Main Flow
+
+```
+Receive query parameters
+  ↓
+Validate pagination, search, and sorting options
+  ↓
+Build Candidate query filter
+  ↓
+Fetch paginated candidates
+  ↓
+Count total candidates matching filter
+  ↓
+Return candidates with pagination metadata
+```
+
+### Example Request
+
+```
+GET /api/candidates?page=1&limit=10&search=nguyen&sortBy=createdAt&sortOrder=desc
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Candidates fetched successfully",
+  "data": [
+    {
+      "id": "candidate_123",
+      "fullName": "Nguyen Van A",
+      "primaryEmail": "vana@example.com",
+      "primaryPhone": "0900000001",
+      "location": "Ho Chi Minh City",
+      "_count": {
+        "resumes": 0
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 10,
+    "total": 1,
+    "totalPages": 1
+  }
+}
+```
+
+---
+
+## GET /api/candidates/:id
+
+Returns one candidate profile by id.
+
+### Main Flow
+
+```
+Receive candidate id
+  ↓
+Find Candidate by id
+  ↓
+Return candidate profile
+```
+
+If the candidate does not exist, the Backend returns 404 Not Found.
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Candidate fetched successfully",
+  "data": {
+    "id": "candidate_123",
+    "fullName": "Nguyen Van A",
+    "primaryEmail": "vana@example.com",
+    "primaryPhone": "0900000001",
+    "location": "Ho Chi Minh City",
+    "_count": {
+      "resumes": 0
+    }
+  }
+}
+```
+
+---
+
+## PATCH /api/candidates/:id
+
+Updates an existing candidate profile.
+
+The update endpoint supports partial updates. The client only needs to send fields that should be changed.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| fullName | string | No | Candidate full name |
+| primaryEmail | string | No | Candidate primary email |
+| primaryPhone | string | No | Candidate primary phone number |
+| linkedinUrl | string | No | Candidate LinkedIn profile URL |
+| githubUrl | string | No | Candidate GitHub profile URL |
+| portfolioUrl | string | No | Candidate portfolio URL |
+| location | string | No | Candidate location |
+
+### Main Flow
+
+```
+Receive candidate id
+  ↓
+Validate request body
+  ↓
+Check Candidate exists
+  ↓
+Check duplicate email if primaryEmail is provided
+  ↓
+Update Candidate record
+  ↓
+Return updated candidate
+```
+
+### Example Request
+
+```json
+{
+  "fullName": "Nguyen Van A Updated",
+  "location": "Ha Noi"
+}
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Candidate updated successfully",
+  "data": {
+    "id": "candidate_123",
+    "fullName": "Nguyen Van A Updated",
+    "primaryEmail": "vana@example.com",
+    "primaryPhone": "0900000001",
+    "location": "Ha Noi",
+    "updatedAt": "2026-04-26T10:45:00.000Z"
+  }
+}
+```
+
+---
+
+## GET /api/candidates/:id/resumes
+
+Returns all resumes that belong to a candidate.
+
+This endpoint is useful for displaying candidate detail pages where the frontend needs to show uploaded CV records for the selected candidate.
+
+### Main Flow
+
+```
+Receive candidate id
+  ↓
+Check Candidate exists
+  ↓
+Find resumes by candidateId
+  ↓
+Include related FileAsset metadata
+  ↓
+Return candidate resumes
+```
+
+If the candidate exists but has no resumes, the Backend returns an empty array.
+
+### Example Response When Candidate Has No Resume
+
+```json
+{
+  "success": true,
+  "message": "Candidate resumes fetched successfully",
+  "data": []
+}
+```
+
+### Example Response When Candidate Has Resumes
+
+```json
+{
+  "success": true,
+  "message": "Candidate resumes fetched successfully",
+  "data": [
+    {
+      "id": "resume_123",
+      "candidateId": "candidate_123",
+      "fileAssetId": "file_123",
+      "parseStatus": "PENDING",
+      "parserVersion": null,
+      "parsingError": null,
+      "createdAt": "2026-04-26T10:30:00.000Z",
+      "updatedAt": "2026-04-26T10:30:00.000Z",
+      "fileAsset": {
+        "id": "file_123",
+        "fileName": "resume.pdf",
+        "originalFileUrl": "https://example.supabase.co/storage/v1/object/public/cv-files/resumes/file.pdf",
+        "storageKey": "resumes/uuid.pdf",
+        "fileType": "PDF",
+        "fileSizeBytes": 123456,
+        "checksum": "sha256-checksum",
+        "bucket": "cv-files",
+        "status": "ACTIVE",
+        "uploadedAt": "2026-04-26T10:30:00.000Z"
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Validation Rules
+
+| Rule | Behavior |
+|------|----------|
+| Missing fullName when creating candidate | Return 400 Bad Request |
+| Invalid email format | Return 400 Bad Request |
+| Invalid URL format | Return 400 Bad Request |
+| Unknown request body field | Return 400 Bad Request |
+| Duplicate candidate email | Return 409 Conflict |
+| Candidate not found | Return 404 Not Found |
+| Invalid pagination query | Return 400 Bad Request |
+| Invalid sort field | Return 400 Bad Request |
+
+---
+
+## Source of Truth
+
+| Data | Source |
+|------|--------|
+| Candidate profile | Candidate table |
+| Candidate resumes | Resume table |
+| Resume file metadata | FileAsset table |
+| Uploaded file URL | FileAsset.originalFileUrl |
+| Uploaded file lifecycle | FileAsset.status |
+
+Candidate data should not duplicate resume file metadata. Resume file metadata belongs to FileAsset.
+
+---
+
+## Notes
+
+- Candidate creation is separated from resume upload.
+- A candidate can exist without any resume.
+- Candidate resumes are retrieved through GET /api/candidates/:id/resumes.
+- DELETE /api/candidates/:id is not part of the MVP.
+- Candidate update uses partial update behavior through PATCH /api/candidates/:id.
+- Duplicate email validation is applied when creating or updating candidates.
+- Candidate list supports pagination, searching, and sorting.
+
+---
+
+## 29. Shared Enums and Entity Existence Utilities
+
+### Purpose
+
+This update adds shared enum files and reusable entity existence helpers to reduce duplicated code across modules.
+
+### Code Location
+
+```txt
+src/common/
+├── enums/
+│   ├── file-asset-status.enum.ts
+│   ├── index.ts
+│   ├── parse-status.enum.ts
+│   └── resume-file-type.enum.ts
+└── utils/
+    └── entity-exists.util.ts
+```
+
+### Important Notes
+
+- Shared enums are used mainly in DTO validation.
+- Prisma-generated enums can still be used in services for database operations.
+- entity-exists.util.ts contains reusable helpers such as:
+  - ensureCandidateExists()
+  - ensureResumeExists()
+  - ensureFileAssetExists()
+- These helpers only check whether an entity exists and throw a consistent AppException if not found.
+- Business rules must remain inside domain services.
+
+### Examples of business rules that should stay in services:
+
+| Rule | Location |
+|------|----------|
+| FileAsset must be ACTIVE before creating Resume | ResumesService |
+| FileAsset must not already be linked to another Resume | ResumesService |
+| Resume cannot be deleted if linked to an Application | ResumesService |
+| Candidate email must be unique | CandidatesService |
+
+---
+
+## 30. Candidate Service Refactor
+
+### Purpose
+
+CandidatesService was updated to reuse the shared ensureCandidateExists() helper.
+
+### Updated Files
+
+- src/modules/candidates/candidates.service.ts
+- src/common/utils/entity-exists.util.ts
+
+### Main Changes
+
+- Removed duplicated private ensureCandidateExists() from CandidatesService.
+- Reused shared helper from src/common/utils/entity-exists.util.ts.
+- Applied to:
+  - PATCH /api/candidates/:id
+  - GET /api/candidates/:id/resumes
+
+**Note:** GET /api/candidates/:id still performs its own lookup because it returns the full candidate profile with resume count.
+
+---
+
+## 31. Resume Endpoints
+
+### Purpose
+
+This section defines the Resume APIs implemented for the MVP.
+
+A resume belongs to a candidate and references one uploaded file through fileAssetId.
+
+Resume creation is separated from file upload. The file must already exist as a valid FileAsset.
+
+### Code Location
+
+```txt
+src/modules/resumes/
+├── dto/
+│   ├── create-resume.dto.ts
+│   ├── resume-query.dto.ts
+│   └── update-resume.dto.ts
+├── resumes.module.ts
+├── resumes.controller.ts
+└── resumes.service.ts
+```
+
+### Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | /api/resumes | Creates a resume from an existing candidate and file asset |
+| GET | /api/resumes | Retrieves paginated resumes |
+| GET | /api/resumes/:id | Retrieves a resume by id |
+| PATCH | /api/resumes/:id | Updates resume parsing-related fields |
+| DELETE | /api/resumes/:id | Deletes a resume if it is not linked to an application |
+
+---
+
+## POST /api/resumes
+
+Creates a resume record with:
+
+```
+parseStatus = PENDING
+```
+
+### Request Body
+
+| Field | Type | Required |
+|-------|------|----------|
+| candidateId | string | Yes |
+| fileAssetId | string | Yes |
+
+### Main Flow
+
+```
+Validate request body
+↓
+Check Candidate exists
+↓
+Check FileAsset exists and is ACTIVE
+↓
+Check FileAsset is not already linked to another Resume
+↓
+Create Resume with parseStatus = PENDING
+```
+
+---
+
+## GET /api/resumes
+
+Returns paginated resume records.
+
+### Query Parameters
+
+| Field | Type | Default |
+|-------|------|---------|
+| page | number | 1 |
+| limit | number | 10 |
+| candidateId | string | — |
+| parseStatus | string | — |
+| sortBy | string | createdAt |
+| sortOrder | asc or desc | desc |
+
+### Supported parseStatus values:
+
+- PENDING
+- PROCESSING
+- SUCCESS
+- FAILED
+
+---
+
+## GET /api/resumes/:id
+
+Returns one resume by id.
+
+The response includes:
+
+- Resume data
+- Candidate summary
+- FileAsset metadata
+
+If the resume does not exist, the Backend returns 404 Not Found.
+
+---
+
+## PATCH /api/resumes/:id
+
+Updates parsing-related fields.
+
+### Updatable Fields
+
+| Field | Description |
+|-------|-------------|
+| rawText | Extracted resume text |
+| parsedData | Structured parsed resume JSON |
+| parseStatus | Resume parsing lifecycle status |
+| parserVersion | Parser version used |
+| parsingError | Parsing error message |
+
+This endpoint is mainly used by parsing workflows or mock parsing flows during MVP development.
+
+---
+
+## DELETE /api/resumes/:id
+
+Deletes a resume record if it is not linked to any application.
+
+### Important rules:
+
+- Deletes only the Resume record.
+- Does not delete the related FileAsset.
+- Does not delete the actual uploaded file from storage.
+- If the resume is linked to an application, return 409 Conflict.
+
+---
+
+## Validation Rules
+
+| Rule | Behavior |
+|------|----------|
+| Candidate not found | 404 Not Found |
+| FileAsset not found | 404 Not Found |
+| FileAsset is not ACTIVE | 409 Conflict |
+| FileAsset already linked to a resume | 409 Conflict |
+| Resume not found | 404 Not Found |
+| Resume linked to application when deleting | 409 Conflict |
+| Invalid parse status | 400 Bad Request |
+| Invalid pagination query | 400 Bad Request |
+
+---
+
+## Source of Truth
+
+| Data | Source |
+|------|--------|
+| Resume ownership | Resume.candidateId |
+| Uploaded file reference | Resume.fileAssetId |
+| Extracted text | Resume.rawText |
+| Structured parsed CV | Resume.parsedData |
+| Parsing lifecycle | Resume.parseStatus |
+| File metadata | FileAsset table |
+| Candidate profile | Candidate table |
+
+---
+
+## Notes
+
+- Resume should not duplicate file metadata.
+- File metadata belongs to FileAsset.
+- New resumes start with parseStatus = PENDING.
+- A file asset can only be linked to one resume.
+
+---
+
+## 32. Resume Parse Flow
+
+### Purpose
+
+This section documents the Backend resume parsing flow.
+
+The flow allows the Backend to trigger resume parsing, extract text from the uploaded CV file, call the AI service, save parsed results, and expose parsed data for the Frontend.
+
+At this stage, the Backend extracts text from PDF/DOCX files stored through `FileAsset`, then sends the extracted `rawText` to the AI service.
+
+---
+
+### Code Location
+
+```txt
+src/modules/resumes/
+├── resumes.controller.ts
+├── resumes.service.ts
+└── utils/
+    ├── resume-error.util.ts
+    ├── resume-include.util.ts
+
+src/integrations/ai/
+├── ai.module.ts
+├── ai.service.ts
+└── types/
+    └── ai-service.types.ts
+```
+
+### Updated Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/resumes/:id/parse` | Triggers resume parsing |
+| GET | `/api/resumes/:id/parsed-data` | Returns parsed resume data |
+
+### POST /api/resumes/:id/parse
+
+Triggers parsing for an existing resume.
+
+#### Main Flow
+
+```
+Receive resume id
+↓
+Find Resume with Candidate and FileAsset
+↓
+Set parseStatus = PROCESSING
+↓
+Download file from storage using FileAsset.storageKey
+â†“
+Extract rawText from PDF/DOCX based on FileAsset.fileType
+↓
+Call AiService.parseResume(rawText)
+↓
+Receive parsedData
+↓
+Save rawText, parsedData, parserVersion
+↓
+Set parseStatus = SUCCESS
+↓
+Clear parsingError
+↓
+Update Candidate.normalizedProfile
+↓
+Return updated Resume
+```
+
+#### Success Behavior
+
+When parsing succeeds, the Resume record is updated with:
+
+| Field | Value |
+|---|---|
+| `rawText` | Text extracted from the uploaded PDF/DOCX file |
+| `parsedData` | Parsed resume response from AI service |
+| `parserVersion` | `backend-file-extraction-ai-parser-v1` |
+| `parseStatus` | `SUCCESS` |
+| `parsingError` | `null` |
+
+The related Candidate record is also updated:
+
+| Field | Value |
+|---|---|
+| `normalizedProfile` | Parsed resume data |
+
+#### Failure Behavior
+
+If parsing fails, the Resume record is updated with:
+
+| Field | Value |
+|---|---|
+| `parseStatus` | `FAILED` |
+| `parsingError` | Error message |
+
+The API returns an error response using the shared error format.
+
+### GET /api/resumes/:id/parsed-data
+
+Returns parsing-related data for a resume.
+
+#### Returned Fields
+
+| Field | Purpose |
+|---|---|
+| `id` | Resume id |
+| `candidateId` | Owner candidate id |
+| `rawText` | Text used for parsing |
+| `parsedData` | Structured parsed resume data |
+| `parseStatus` | Current parsing status |
+| `parserVersion` | Parser version used |
+| `parsingError` | Parsing error message if failed |
+| `updatedAt` | Last update time |
+
+### Utility Files
+
+| File | Purpose |
+|---|---|
+| `resume-error.util.ts` | Extracts a safe parsing error message |
+| `resume-include.util.ts` | Reuses Prisma include config for Resume queries |
+| `parsing.service.ts` | Extracts raw text from PDF/DOCX buffers |
+| `supabase-storage.service.ts` | Downloads uploaded resume files from storage |
+
+### Notes
+
+- Frontend does not call the AI service directly.
+- Backend calls the AI service through `AiService.parseResume()`.
+- Resume remains the source of truth for `rawText`, `parsedData`, `parseStatus`, `parserVersion`, and `parsingError`.
+- Candidate `normalizedProfile` is updated after successful parsing.
+- The AI service receives `rawText`; uploaded files are not sent directly to the AI service in this flow.
+- PDF extraction depends on `pdf-parse`.
+- DOCX extraction depends on `mammoth`.
+---
+
+## 33. PDF/DOCX Raw Text Extraction Improvements
+
+### Purpose
+
+This section documents the latest Backend work for receiving uploaded resume files and extracting reliable `rawText` before sending it to the AI service.
+
+The main goal of this update is to improve parsing quality for real PDF resumes where important project links are stored as PDF hyperlink annotations instead of visible text. Without these improvements, the AI service may receive incomplete raw text and may miss or misplace project URLs.
+
+---
+
+### Code Location
+
+```txt
+src/integrations/parsing/
+└── parsing.service.ts
+
+src/integrations/storage/
+└── supabase-storage.service.ts
+
+src/modules/resumes/
+├── resumes.controller.ts
+├── resumes.service.ts
+└── utils/
+    ├── resume-error.util.ts
+    └── resume-include.util.ts
+
+src/integrations/ai/
+├── ai.service.ts
+└── types/
+    └── ai-service.types.ts
+```
+
+### Main Responsibilities
+
+| Area | Responsibility |
+|---|---|
+| `ResumesService` | Controls resume parse flow and persists `rawText`, `parsedData`, `parseStatus`, `parserVersion`, and `parsingError` |
+| `SupabaseStorageService` | Downloads uploaded resume files from storage using `FileAsset.storageKey` |
+| `ParsingService` | Extracts text from PDF/DOCX buffers and normalizes extracted text |
+| `AiService` | Sends extracted `rawText` to the AI service through `parseResume()` |
+
+---
+
+### Supported File Extraction
+
+| File Type | Extraction Dependency | Behavior |
+|---|---|---|
+| PDF | `pdf-parse` | Extracts visible text from text-based PDF files |
+| PDF hyperlink annotations | `pdfjs-dist` and raw `/URI` fallback | Extracts embedded link annotations and injects them into `rawText` |
+| DOCX | `mammoth` | Extracts raw text from Word documents |
+
+---
+
+### Updated PDF Extraction Flow
+
+```txt
+Receive uploaded PDF buffer
+↓
+Extract visible text with pdf-parse
+↓
+Try extracting hyperlink annotations with pdfjs-dist
+↓
+If pdfjs-dist cannot extract annotations, fallback to raw PDF /URI scanning
+↓
+Normalize extracted URLs
+↓
+Inject URLs into the most relevant raw text location
+↓
+Normalize final rawText
+↓
+Return rawText to ResumesService
+```
+
+---
+
+### PDF Hyperlink Annotation Extraction
+
+Many CV PDFs display project links as clickable text, but the URL itself is not part of the visible text returned by `pdf-parse`.
+
+The Backend now extracts those URLs from PDF annotations so the final `rawText` can include links such as:
+
+```txt
+https://github.com/ThueCode/KaiSneaker
+https://github.com/nhkkhaii/CinemaNHK
+https://github.com/nhkkhaii/QLDA
+```
+
+This improves the AI service's ability to assign `projects[].url` correctly.
+
+---
+
+### Hyperlink Placement Rules
+
+The Backend no longer blindly appends every extracted hyperlink at the end of the raw text.
+
+The placement logic now follows this priority:
+
+```txt
+1. If the URL slug matches a project title, insert URL under that project title.
+2. If the annotation label is reliable, insert URL near the matching label.
+3. If the label is weak or ambiguous, do not trust it.
+4. If no safe placement exists, append the URL once at the end of rawText.
+```
+
+Example expected raw text:
+
+```txt
+KaiSneaker – E-commerce Website
+https://github.com/ThueCode/KaiSneaker
+Full Stack Developer
+Technologies: ReactJS (TypeScript), PostgreSQL, RESTful API, Java (Spring Boot)
+
+CinemaNHK – Movie Ticket Booking System
+https://github.com/nhkkhaii/CinemaNHK
+Full Stack Developer
+Technologies: C#, SQL Server, DevExpress, Microsoft Visual Studio
+```
+
+This prevents a URL from being injected into the wrong project description.
+
+---
+
+### Weak Annotation Labels
+
+Some PDF annotations may return labels that are too generic to be trusted.
+
+Examples of weak labels:
+
+```txt
+description
+key contributions
+key responsibilities
+link
+link github
+project
+projects
+technologies
+technology
+```
+
+These labels can appear multiple times across different projects. If the Backend trusts them directly, a project URL may be inserted after the first `Description:` line instead of the project it belongs to.
+
+The new behavior is:
+
+- Do not use weak labels as the primary placement signal.
+- Prefer GitHub repository slug matching against project title text.
+- Use label-based placement only when the label is specific enough.
+
+---
+
+### URL Slug Matching
+
+For GitHub repository URLs, the Backend extracts the repository slug from the URL path.
+
+Example:
+
+```txt
+https://github.com/nhkkhaii/CinemaNHK
+```
+
+Context token:
+
+```txt
+CinemaNHK
+```
+
+The Backend then searches the extracted PDF text for a matching line such as:
+
+```txt
+CinemaNHK – Movie Ticket Booking System
+```
+
+If found, the URL is inserted directly below that project title.
+
+This is especially useful for two-column or visual PDF layouts where annotation labels are unreliable.
+
+---
+
+### Raw PDF /URI Fallback
+
+If `pdfjs-dist` cannot extract PDF annotations, the Backend falls back to scanning the raw PDF source for `/URI` entries.
+
+This fallback supports URL values encoded as:
+
+- PDF literal strings
+- PDF hex strings
+
+The extracted URLs are normalized and de-duplicated before being injected into raw text.
+
+---
+
+### Raw Text Sanitization
+
+The Backend now sanitizes extracted resume text before persistence and before sending it to the AI service.
+
+Current normalization includes:
+
+- Removing null bytes (`\u0000`)
+- Converting Windows line endings to `\n`
+- Trimming repeated spaces and tabs
+- Removing empty lines
+- Returning a clean final `rawText`
+
+This prevents invalid characters from leaking into the AI service request or being persisted in `Resume.rawText`.
+
+---
+
+### Resume Parse Failure Handling
+
+When parsing fails, the Backend stores useful failure details instead of silently failing.
+
+Failure behavior:
+
+| Field | Value |
+|---|---|
+| `parseStatus` | `FAILED` |
+| `parsingError` | Safe extracted error message |
+
+The API still returns the shared error response format.
+
+This helps debugging parse failures caused by unreadable files, unsupported content, AI service errors, or unexpected extraction issues.
+
+---
+
+### Updated Parser Version
+
+Successful resume parsing stores:
+
+```txt
+backend-file-extraction-ai-parser-v1
+```
+
+in `Resume.parserVersion`.
+
+This version means:
+
+- Backend extracted the raw text from uploaded file.
+- Backend normalized the extracted text.
+- Backend sent `rawText` to AI service.
+- AI service returned structured parsed resume data.
+- Backend persisted both `rawText` and `parsedData`.
+
+---
+
+### Updated Parse Flow Summary
+
+```txt
+POST /api/resumes/:id/parse
+↓
+Find Resume with Candidate and FileAsset
+↓
+Download uploaded file from Supabase Storage
+↓
+Extract visible text from PDF/DOCX
+↓
+Extract PDF hyperlink annotations when available
+↓
+Inject project URLs into rawText using slug/title matching
+↓
+Sanitize rawText
+↓
+Send rawText to AI service
+↓
+Persist rawText and parsedData
+↓
+Set parseStatus = SUCCESS
+↓
+Update Candidate.normalizedProfile
+```
+
+---
+
+### Tests Added / Updated
+
+Recent Backend tests cover:
+
+| Test Area | Purpose |
+|---|---|
+| PDF hyperlink annotation extraction | Ensures URLs embedded in PDF annotations are extracted into raw text |
+| Duplicate hyperlink de-duplication | Ensures repeated PDF links are only included once |
+| Link placement by project slug | Ensures repository URLs are inserted under the matching project title |
+| Weak label handling | Ensures labels like `Description` are not used to place URLs incorrectly |
+| Null byte sanitization | Ensures `rawText` does not contain `\u0000` |
+| Resume parsing failure details | Ensures failed parsing updates `parseStatus` and `parsingError` |
+
+Run Backend tests:
+
+```bash
+npm test
+```
+
+---
+
+### Important Notes
+
+- The Backend still sends only `rawText` to the AI service.
+- Uploaded PDF/DOCX files are not sent directly to the AI service.
+- `Resume.rawText` is the exact text used for AI parsing after Backend extraction and normalization.
+- Better raw text directly improves AI service project parsing quality.
+- OCR for scanned PDFs is still not implemented.
+- Highly visual CVs may still require future extraction improvements.

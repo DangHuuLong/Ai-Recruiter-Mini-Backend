@@ -1,0 +1,13 @@
+// Body for POST /auth/login — email and password credentials.
+import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+
+export class LoginDto {
+  @IsEmail()
+  @MaxLength(255)
+  email!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  password!: string;
+}

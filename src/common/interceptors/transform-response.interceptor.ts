@@ -1,46 +1,49 @@
-import {
-  CallHandler,
-  ExecutionContext,
-  Injectable,
-  NestInterceptor,
-} from '@nestjs/common';
-import { map } from 'rxjs/operators';
+// Global interceptor that wraps every controller return value into the standard {success, message, data} envelope.
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+
+import { ResponsePayload, StandardResponse } from '../types/api-response.type';
 
 @Injectable()
-export class TransformResponseInterceptor<T>
-  implements NestInterceptor<T, any> {
+export class TransformResponseInterceptor implements NestInterceptor<
+  unknown,
+  StandardResponse | ResponsePayload
+> {
+  // Registered globally in main.ts; normalizes every controller response into the {success, message, data} envelope.
   intercept(
     context: ExecutionContext,
     next: CallHandler,
-  ): Observable<any> {
+  ): Observable<StandardResponse | ResponsePayload> {
     return next.handle().pipe(
-      map((data) => {
-        if (data && data.success !== undefined) {
-          return data;
+      map((data: unknown) => {
+        const payload = data as ResponsePayload;
+
+        if (payload && payload.success !== undefined) {
+          return payload;
         }
 
-        if (data && data.data !== undefined && data.meta !== undefined) {
+        if (payload && payload.data !== undefined && payload.meta !== undefined) {
           return {
             success: true,
-            message: data.message || 'Success',
-            data: data.data,
-            meta: data.meta,
+            message: payload.message || 'Success',
+            data: payload.data,
+            meta: payload.meta,
           };
         }
 
-        if (data && data.data !== undefined) {
+        if (payload && payload.data !== undefined) {
           return {
             success: true,
-            message: data.message || 'Success',
-            data: data.data,
+            message: payload.message || 'Success',
+            data: payload.data,
           };
         }
 
         return {
           success: true,
           message: 'Success',
-          data,
+          data: data ?? null,
         };
       }),
     );
