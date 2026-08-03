@@ -96,6 +96,22 @@ enum ScoringBatchStatus {
   CANCELLED
 }
 
+enum AiFunctionType {
+  PARSE_RESUME
+  PARSE_JOB_DESCRIPTION
+  SCORE_APPLICATION
+}
+
+enum AiCallStatus {
+  SUCCESS
+  FAILED
+}
+
+enum AiCallTier {
+  ENTERPRISE
+  PUBLIC
+}
+
 // ─────────────────────────────────────────────
 // ORGANIZATION (multi-tenant root)
 // ─────────────────────────────────────────────
@@ -118,6 +134,7 @@ model Organization {
   fileAssets        FileAsset[]
   scoringBatches    ScoringBatch[]
   auditLogs         AuditLog[]
+  aiActivityLogs    AiActivityLog[]
 
   @@index([slug])
 }
@@ -829,4 +846,39 @@ model AuditLog {
   @@index([organizationId])
   @@index([resourceType, resourceId])
   @@index([createdAt])
+}
+
+// Observability log for every call to an external AI-service function (parse resume/JD,
+// score application), across both enterprise (authenticated) and public (anonymous) tiers —
+// lets a DEV review real input/output pairs to judge extraction/scoring quality, not just
+// catch crashes. Deliberately has no FK to ScoringBatch/Evaluation/Resume/JobDescription:
+// public-tier batches have no such rows at all (Redis-only), and this table must never block
+// deletion of business data it references. organizationId is the one real FK (enterprise
+// calls only) since Organization already owns AuditLog the same way.
+model AiActivityLog {
+  id               String         @id @default(cuid())
+  functionType     AiFunctionType
+  tier             AiCallTier
+  status           AiCallStatus
+  organizationId   String?
+  batchId          String?
+  evaluationId     String?
+  resumeId         String?
+  jobDescriptionId String?
+  input            Json
+  output           Json?
+  errorMessage     String?
+  latencyMs        Int
+  createdAt        DateTime       @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([functionType])
+  @@index([tier])
+  @@index([status])
+  @@index([organizationId])
+  @@index([createdAt])
+  @@index([batchId])
+  @@index([resumeId])
+  @@index([jobDescriptionId])
 }
