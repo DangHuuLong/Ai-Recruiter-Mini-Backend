@@ -4,10 +4,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { AiService } from './ai.service';
+import { AiActivityLogModule } from '../../modules/ai-activity-log/ai-activity-log.module';
 
 @Module({
   imports: [
     ConfigModule,
+    AiActivityLogModule,
     HttpModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
