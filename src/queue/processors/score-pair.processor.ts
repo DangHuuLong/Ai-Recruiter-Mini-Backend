@@ -49,7 +49,12 @@ export class ScorePairProcessor extends WorkerHost {
         return;
       }
 
-      const result = await this.aiService.scoreApplication(resumeData, jdData, criteria);
+      const result = await this.aiService.scoreApplication(resumeData, jdData, criteria, {
+        tier,
+        batchId,
+        resumeId: resumeItemId,
+        jobDescriptionId: jdItemId,
+      });
       const interviewQuestions = await this.scoringMapper.buildInterviewQuestions(taxonomy, result);
 
       await store.upsertResult(batchId, resumeItemId, jdItemId, {
