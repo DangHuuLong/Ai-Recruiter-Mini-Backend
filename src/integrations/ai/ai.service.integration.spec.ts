@@ -5,9 +5,11 @@ import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AiService } from './ai.service';
+import { AiActivityLoggerService } from '../../modules/ai-activity-log/ai-activity-log-logger.service';
 
 const shouldRunAiIntegrationTests = process.env.RUN_AI_INTEGRATION_TESTS === 'true';
 const describeAiIntegration = shouldRunAiIntegrationTests ? describe : describe.skip;
+const testContext = { tier: 'ENTERPRISE' as const };
 
 describeAiIntegration('AiService Integration', () => {
   let service: AiService;
@@ -23,7 +25,12 @@ describeAiIntegration('AiService Integration', () => {
           timeout: Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000),
         }),
       ],
-      providers: [AiService],
+      providers: [
+        AiService,
+        // This test exercises real HTTP calls to the AI service only — stub out the DB-backed
+        // activity logger so it doesn't need a live database connection.
+        { provide: AiActivityLoggerService, useValue: { logCall: async () => undefined } },
+      ],
     }).compile();
 
     service = module.get<AiService>(AiService);
@@ -36,55 +43,72 @@ describeAiIntegration('AiService Integration', () => {
   });
 
   it('should call AI parse resume endpoint', async () => {
-    const result = await service.parseResume({
-      resume_id: 'test-resume-id',
-      raw_text: 'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
-    });
+    const result = await service.parseResume(
+      {
+        resume_id: 'test-resume-id',
+        raw_text: 'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
+      },
+      testContext,
+    );
 
     expect(result.parsed_data.personal).toBeDefined();
     expect(result.parsed_data.skills).toBeDefined();
   });
 
   it('should call AI parse job description endpoint', async () => {
-    const result = await service.parseJobDescription({
-      raw_text: 'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
-    });
+    const result = await service.parseJobDescription(
+      {
+        raw_text: 'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
+      },
+      testContext,
+    );
 
     expect(result.required_skills).toBeDefined();
   });
 
   it('should call AI score application endpoint', async () => {
-    const resume = await service.parseResume({
-      resume_id: 'test-resume-id',
-      raw_text: 'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
-    });
+    const resume = await service.parseResume(
+      {
+        resume_id: 'test-resume-id',
+        raw_text: 'Nguyen Van A is a backend developer with Python, FastAPI and PostgreSQL.',
+      },
+      testContext,
+    );
 
-    const jobDescription = await service.parseJobDescription({
-      raw_text: 'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
-    });
+    const jobDescription = await service.parseJobDescription(
+      {
+        raw_text: 'We are looking for a Backend Developer with Python, FastAPI, PostgreSQL and Docker.',
+      },
+      testContext,
+    );
 
-    const result = await service.scoreApplication(resume.parsed_data, jobDescription, [
-      {
-        criterion: 'SKILLS_MATCH',
-        weight: 0.35,
-      },
-      {
-        criterion: 'EXPERIENCE_RELEVANCE',
-        weight: 0.3,
-      },
-      {
-        criterion: 'PROJECT_RELEVANCE',
-        weight: 0.15,
-      },
-      {
-        criterion: 'EDUCATION_CERTIFICATION',
-        weight: 0.1,
-      },
-      {
-        criterion: 'KEYWORD_DOMAIN_ALIGNMENT',
-        weight: 0.1,
-      },
-    ]);
+    const result = await service.scoreApplication(
+      resume.parsed_data,
+      jobDescription,
+      [
+        {
+          criterion: 'SKILLS_MATCH',
+          weight: 0.35,
+        },
+        {
+          criterion: 'EXPERIENCE_RELEVANCE',
+          weight: 0.3,
+        },
+        {
+          criterion: 'PROJECT_RELEVANCE',
+          weight: 0.15,
+        },
+        {
+          criterion: 'EDUCATION_CERTIFICATION',
+          weight: 0.1,
+        },
+        {
+          criterion: 'KEYWORD_DOMAIN_ALIGNMENT',
+          weight: 0.1,
+        },
+      ],
+      testContext,
+    );
 
     expect(result.overall_score).toBeDefined();
     expect(result.criteria).toBeDefined();
