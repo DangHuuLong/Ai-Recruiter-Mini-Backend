@@ -3,6 +3,7 @@ import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { AiActivityLogQueryDto } from './dto/ai-activity-log-query.dto';
+import { AiActivityLogSummaryQueryDto } from './dto/ai-activity-log-summary-query.dto';
 import { AiActivityLogTimeseriesQueryDto } from './dto/ai-activity-log-timeseries-query.dto';
 import { AiActivityLogService } from './ai-activity-log.service';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -17,8 +18,8 @@ export class AiActivityLogController {
 
   // GET /ai-activity-logs/stats/summary — KPI row (today/this-month counts, success rate, avg latency).
   @Get('stats/summary')
-  async getSummary() {
-    const summary = await this.aiActivityLogService.getSummary();
+  async getSummary(@Query() query: AiActivityLogSummaryQueryDto) {
+    const summary = await this.aiActivityLogService.getSummary(query.tzOffsetMinutes);
 
     return {
       message: 'AI activity summary fetched successfully',
