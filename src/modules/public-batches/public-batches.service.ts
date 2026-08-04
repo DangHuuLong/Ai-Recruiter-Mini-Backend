@@ -42,12 +42,19 @@ export class PublicBatchesService {
 
   // Called by PublicBatchesController.createUploadUrls — validates file count/type/size and mints signed Supabase upload URLs.
   async createUploadUrls(dto: CreateUploadUrlsDto, sessionId: string) {
-    const maxFiles = this.configService.get<number>('PUBLIC_MAX_FILES_PER_BATCH') ?? 2;
     const maxFileSizeMb =
       this.configService.get<number>('MAX_FILE_SIZE_MB') ?? DEFAULT_MAX_FILE_SIZE_MB;
 
-    if (dto.files.length > maxFiles) {
-      throw new AppException(`Batch exceeds the maximum of ${maxFiles} files`, 400);
+    const isResume = dto.kind === 'RESUME';
+    const maxAllowed = isResume
+      ? (this.configService.get<number>('PUBLIC_MAX_FILES_PER_BATCH') ?? 2)
+      : (this.configService.get<number>('PUBLIC_MAX_JDS_PER_BATCH') ?? 10);
+
+    if (dto.files.length > maxAllowed) {
+      throw new AppException(
+        `Batch exceeds the maximum of ${maxAllowed} ${isResume ? 'resumes' : 'job descriptions'} for public batches`,
+        400,
+      );
     }
 
     const bucket = this.getPublicBucket();

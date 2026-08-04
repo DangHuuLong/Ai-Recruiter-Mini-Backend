@@ -17,12 +17,19 @@ import {
   ScoreApplicationRequest,
   ScoreCriterionConfig,
 } from '../../common/types/ai-service.types';
+import {
+  AiActivityLoggerService,
+  AiCallContext,
+} from '../../modules/ai-activity-log/ai-activity-log-logger.service';
 
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly activityLogger: AiActivityLoggerService,
+  ) {}
 
   // Pings the Python AI service's /health endpoint; used for readiness/status checks.
   async checkHealth(): Promise<AiHealthData> {
@@ -36,28 +43,35 @@ export class AiService {
   }
 
   // Called by resume-parse.processor.ts (BullMQ handler) and resumes.service.ts to extract structured data from resume text.
-  async parseResume(payload: ParseResumeRequest): Promise<ParseResumeResult> {
-    return this.request<ParseResumeResult>('POST /parse/resume', async () => {
-      const response = await firstValueFrom(
-        this.httpService.post<AiServiceResponse<ParseResumeResult>>('/parse/resume', payload),
-      );
+  async parseResume(payload: ParseResumeRequest, context: AiCallContext): Promise<ParseResumeResult> {
+    return this.requestWithActivityLog('PARSE_RESUME', context, payload, () =>
+      this.request<ParseResumeResult>('POST /parse/resume', async () => {
+        const response = await firstValueFrom(
+          this.httpService.post<AiServiceResponse<ParseResumeResult>>('/parse/resume', payload),
+        );
 
-      return this.extractData(response.data, 'Invalid AI parse resume response');
-    });
+        return this.extractData(response.data, 'Invalid AI parse resume response');
+      }),
+    );
   }
 
   // Called by jd-parse.processor.ts (BullMQ handler) and job-descriptions.service.ts to extract structured data from a job description.
-  async parseJobDescription(payload: ParseJobDescriptionRequest): Promise<ParsedJobDescriptionData> {
-    return this.request<ParsedJobDescriptionData>('POST /parse/job-description', async () => {
-      const response = await firstValueFrom(
-        this.httpService.post<AiServiceResponse<ParsedJobDescriptionData>>(
-          '/parse/job-description',
-          payload,
-        ),
-      );
+  async parseJobDescription(
+    payload: ParseJobDescriptionRequest,
+    context: AiCallContext,
+  ): Promise<ParsedJobDescriptionData> {
+    return this.requestWithActivityLog('PARSE_JOB_DESCRIPTION', context, payload, () =>
+      this.request<ParsedJobDescriptionData>('POST /parse/job-description', async () => {
+        const response = await firstValueFrom(
+          this.httpService.post<AiServiceResponse<ParsedJobDescriptionData>>(
+            '/parse/job-description',
+            payload,
+          ),
+        );
 
-      return this.extractData(response.data, 'Invalid AI parse job description response');
-    });
+        return this.extractData(response.data, 'Invalid AI parse job description response');
+      }),
+    );
   }
 
   // Called by score-pair.processor.ts (BullMQ handler) and evaluations.service.ts to score a resume against a job description.
@@ -65,6 +79,7 @@ export class AiService {
     resume: ParsedResumeData,
     jobDescription: ParsedJobDescriptionData,
     criteria: ScoreCriterionConfig[],
+    context: AiCallContext,
   ): Promise<EvaluationResult> {
     const payload: ScoreApplicationRequest = {
       resume,
@@ -74,13 +89,50 @@ export class AiService {
       },
     };
 
-    return this.request<EvaluationResult>('POST /score/application', async () => {
-      const response = await firstValueFrom(
-        this.httpService.post<AiServiceResponse<EvaluationResult>>('/score/application', payload),
-      );
+    return this.requestWithActivityLog('SCORE_APPLICATION', context, payload, () =>
+      this.request<EvaluationResult>('POST /score/application', async () => {
+        const response = await firstValueFrom(
+          this.httpService.post<AiServiceResponse<EvaluationResult>>('/score/application', payload),
+        );
 
-      return this.extractData(response.data, 'Invalid AI score application response');
-    });
+        return this.extractData(response.data, 'Invalid AI score application response');
+      }),
+    );
+  }
+
+  // Shared by parseResume/parseJobDescription/scoreApplication — times the call, logs input/output (or the
+  // error) to AiActivityLog via AiActivityLoggerService, then rethrows unchanged so error handling for callers
+  // doesn't change. Logging never affects the resolved value or a thrown error.
+  private async requestWithActivityLog<T>(
+    functionType: 'PARSE_RESUME' | 'PARSE_JOB_DESCRIPTION' | 'SCORE_APPLICATION',
+    context: AiCallContext,
+    input: unknown,
+    handler: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = Date.now();
+
+    try {
+      const output = await handler();
+      await this.activityLogger.logCall({
+        functionType,
+        context,
+        input,
+        output,
+        latencyMs: Date.now() - startedAt,
+      });
+
+      return output;
+    } catch (error) {
+      await this.activityLogger.logCall({
+        functionType,
+        context,
+        input,
+        latencyMs: Date.now() - startedAt,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+
+      throw error;
+    }
   }
 
   // Shared wrapper used by all public methods above to log failures and translate them via mapAiServiceError.
