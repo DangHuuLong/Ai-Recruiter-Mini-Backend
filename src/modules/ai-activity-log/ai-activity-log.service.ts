@@ -88,10 +88,16 @@ export class AiActivityLogService {
   }
 
   // Called by AiActivityLogController.getSummary — KPI row (today/this-month counts, success rate, avg latency).
-  async getSummary() {
-    const now = new Date();
-    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  // tzOffsetMinutes shifts "today"/"this month" boundaries to the caller's local calendar — see
+  // getTimeseries's doc comment for why a fixed offset instead of a full IANA timezone is enough here.
+  async getSummary(tzOffsetMinutes = 0) {
+    const localNow = this.toLocal(new Date(), tzOffsetMinutes);
+    const localStartOfToday = new Date(
+      Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate()),
+    );
+    const localStartOfMonth = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), 1));
+    const startOfToday = this.toUtcInstant(localStartOfToday, tzOffsetMinutes);
+    const startOfMonth = this.toUtcInstant(localStartOfMonth, tzOffsetMinutes);
 
     const [totalToday, totalThisMonth, totalAll, successAll, latencyAgg] = await Promise.all([
       this.prisma.aiActivityLog.count({ where: { createdAt: { gte: startOfToday } } }),
@@ -109,13 +115,24 @@ export class AiActivityLogService {
     };
   }
 
-  // Called by AiActivityLogController.getTimeseries — bucketed call counts per functionType, zero-filled for empty buckets.
+  // Called by AiActivityLogController.getTimeseries — bucketed call counts per functionType, zero-filled
+  // for empty buckets, all in the caller's local calendar (see tzOffsetMinutes doc on the DTO).
+  //
+  // createdAt is stored as a naive `timestamp` written from a UTC instant (no zone attached), so
+  // "local" bucketing means shifting it by the offset *before* truncating — both in the WHERE range
+  // (computed in JS below) and inside the SQL date_trunc itself (bucket boundaries must move too,
+  // not just the overall window) — then reading the shifted result's UTC getters gives the correct
+  // local calendar value, since the shift already did the timezone conversion.
   async getTimeseries(query: AiActivityLogTimeseriesQueryDto) {
-    const { start, end, buckets, truncUnit } = this.resolveRange(query.granularity, query.date);
+    const { start, end, buckets, truncUnit } = this.resolveRange(
+      query.granularity,
+      query.tzOffsetMinutes,
+      query.date,
+    );
 
     const rows = await this.prisma.$queryRaw<TimeseriesRow[]>`
       SELECT
-        date_trunc(${truncUnit}, "createdAt") AS bucket,
+        date_trunc(${truncUnit}, "createdAt" + make_interval(mins => ${query.tzOffsetMinutes})) AS bucket,
         "functionType",
         COUNT(*)::bigint AS count
       FROM "AiActivityLog"
@@ -146,8 +163,20 @@ export class AiActivityLogService {
     }));
   }
 
+  // Shifts a UTC instant forward by the offset so its UTC getters read as local wall-clock values.
+  private toLocal(utcDate: Date, tzOffsetMinutes: number): Date {
+    return new Date(utcDate.getTime() + tzOffsetMinutes * 60_000);
+  }
+
+  // Inverse of toLocal — converts a "local calendar" instant (built via Date.UTC from local
+  // components) back to the real UTC instant to compare against the naive-UTC-stored column.
+  private toUtcInstant(localDate: Date, tzOffsetMinutes: number): Date {
+    return new Date(localDate.getTime() - tzOffsetMinutes * 60_000);
+  }
+
   private resolveRange(
     granularity: 'hour' | 'day' | 'month',
+    tzOffsetMinutes: number,
     date?: string,
   ): {
     start: Date;
@@ -155,11 +184,13 @@ export class AiActivityLogService {
     truncUnit: string;
     buckets: Array<{ key: string; label: string }>;
   } {
-    const now = new Date();
+    const localNow = this.toLocal(new Date(), tzOffsetMinutes);
 
     if (granularity === 'hour') {
-      const day = date ?? now.toISOString().slice(0, 10);
-      const start = new Date(`${day}T00:00:00.000Z`);
+      const day = date ?? localNow.toISOString().slice(0, 10);
+      const [year, mon, dayOfMonth] = day.split('-').map(Number);
+      const localStart = new Date(Date.UTC(year, mon - 1, dayOfMonth));
+      const start = this.toUtcInstant(localStart, tzOffsetMinutes);
       const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
       const buckets = Array.from({ length: 24 }, (_, hour) => {
         const label = String(hour).padStart(2, '0');
@@ -169,10 +200,12 @@ export class AiActivityLogService {
     }
 
     if (granularity === 'day') {
-      const month = date ?? now.toISOString().slice(0, 7);
+      const month = date ?? localNow.toISOString().slice(0, 7);
       const [year, mon] = month.split('-').map(Number);
-      const start = new Date(Date.UTC(year, mon - 1, 1));
-      const end = new Date(Date.UTC(year, mon, 1));
+      const localStart = new Date(Date.UTC(year, mon - 1, 1));
+      const localEnd = new Date(Date.UTC(year, mon, 1));
+      const start = this.toUtcInstant(localStart, tzOffsetMinutes);
+      const end = this.toUtcInstant(localEnd, tzOffsetMinutes);
       const daysInMonth = new Date(Date.UTC(year, mon, 0)).getUTCDate();
       const buckets = Array.from({ length: daysInMonth }, (_, i) => {
         const day = i + 1;
@@ -182,9 +215,11 @@ export class AiActivityLogService {
       return { start, end, truncUnit: 'day', buckets };
     }
 
-    const year = date ? Number(date) : now.getUTCFullYear();
-    const start = new Date(Date.UTC(year, 0, 1));
-    const end = new Date(Date.UTC(year + 1, 0, 1));
+    const year = date ? Number(date) : localNow.getUTCFullYear();
+    const localStart = new Date(Date.UTC(year, 0, 1));
+    const localEnd = new Date(Date.UTC(year + 1, 0, 1));
+    const start = this.toUtcInstant(localStart, tzOffsetMinutes);
+    const end = this.toUtcInstant(localEnd, tzOffsetMinutes);
     const buckets = Array.from({ length: 12 }, (_, i) => {
       const label = String(i + 1).padStart(2, '0');
       return { key: `${year}-${label}`, label };
