@@ -55,19 +55,28 @@ export class ResumeParseProcessor extends WorkerHost {
         }
       }
 
+      const aiCallContext = {
+        tier,
+        organizationId: job.data.organizationId,
+        batchId,
+        resumeId: resumeItemId,
+      };
       const parseResult = isFileBased
-        ? await this.aiService.parseResume({
-            resume_id: resumeItemId,
-            file_name: fileName,
-            file_type: fileType,
-            signed_url: await this.storageService.createSignedUrl(
-              storageKey!,
-              RESUME_SIGNED_URL_EXPIRES_IN_SECONDS,
-              bucket,
-            ),
-            checksum,
-          })
-        : await this.aiService.parseResume({ resume_id: resumeItemId, raw_text: rawText });
+        ? await this.aiService.parseResume(
+            {
+              resume_id: resumeItemId,
+              file_name: fileName,
+              file_type: fileType,
+              signed_url: await this.storageService.createSignedUrl(
+                storageKey!,
+                RESUME_SIGNED_URL_EXPIRES_IN_SECONDS,
+                bucket,
+              ),
+              checksum,
+            },
+            aiCallContext,
+          )
+        : await this.aiService.parseResume({ resume_id: resumeItemId, raw_text: rawText }, aiCallContext);
 
       await store.updateResumeItem(batchId, resumeItemId, {
         status: 'SUCCESS',

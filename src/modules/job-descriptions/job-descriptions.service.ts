@@ -122,9 +122,10 @@ export class JobDescriptionsService {
     });
 
     try {
-      const parsedData = await this.aiService.parseJobDescription({
-        raw_text: jobDescription.rawText,
-      });
+      const parsedData = await this.aiService.parseJobDescription(
+        { raw_text: jobDescription.rawText },
+        { tier: 'ENTERPRISE', organizationId, jobDescriptionId: id },
+      );
       const classification = await this.classifierService.classify(parsedData);
 
       await this.prisma.jobDescription.update({

@@ -170,13 +170,16 @@ export class ResumesService {
         resume.fileAsset.bucket,
       );
 
-      const parseResult = await this.aiService.parseResume({
-        resume_id: resume.id,
-        file_name: resume.fileAsset.fileName,
-        file_type: resume.fileAsset.fileType,
-        signed_url: signedUrl,
-        checksum: resume.fileAsset.checksum,
-      });
+      const parseResult = await this.aiService.parseResume(
+        {
+          resume_id: resume.id,
+          file_name: resume.fileAsset.fileName,
+          file_type: resume.fileAsset.fileType,
+          signed_url: signedUrl,
+          checksum: resume.fileAsset.checksum,
+        },
+        { tier: 'ENTERPRISE', organizationId, resumeId: id },
+      );
 
       const updatedResume = await this.prisma.resume.update({
         where: { id },

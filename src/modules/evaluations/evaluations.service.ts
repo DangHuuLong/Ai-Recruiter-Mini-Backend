@@ -50,6 +50,7 @@ export class EvaluationsService {
       context.jobDescriptionData,
       context.criteria,
       context.jobDescriptionTaxonomy,
+      organizationId,
     );
   }
 
@@ -274,6 +275,7 @@ export class EvaluationsService {
       context.jobDescriptionData,
       context.criteria,
       context.jobDescriptionTaxonomy,
+      organizationId,
     );
   }
 
@@ -285,13 +287,14 @@ export class EvaluationsService {
     jobDescriptionData: ParsedJobDescriptionData,
     criteria: ScoreCriterionConfig[],
     jobDescriptionTaxonomy: JobDescriptionTaxonomy,
+    organizationId: string,
   ) {
     try {
-      const result = await this.aiService.scoreApplication(
-        resumeData,
-        jobDescriptionData,
-        criteria,
-      );
+      const result = await this.aiService.scoreApplication(resumeData, jobDescriptionData, criteria, {
+        tier: 'ENTERPRISE',
+        organizationId,
+        evaluationId,
+      });
 
       return this.persistSuccessfulEvaluation(evaluationId, applicationId, result, jobDescriptionTaxonomy);
     } catch (error) {

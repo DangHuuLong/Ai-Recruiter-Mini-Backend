@@ -39,17 +39,21 @@ export class JdParseProcessor extends WorkerHost {
     }
 
     try {
+      const aiCallContext = { tier, batchId, jobDescriptionId: jdItemId };
       const parsedData = isFileBased
-        ? await this.aiService.parseJobDescription({
-            file_name: fileName,
-            file_type: fileType,
-            signed_url: await this.storageService.createSignedUrl(
-              storageKey!,
-              JD_SIGNED_URL_EXPIRES_IN_SECONDS,
-              bucket,
-            ),
-          })
-        : await this.aiService.parseJobDescription({ raw_text: rawText });
+        ? await this.aiService.parseJobDescription(
+            {
+              file_name: fileName,
+              file_type: fileType,
+              signed_url: await this.storageService.createSignedUrl(
+                storageKey!,
+                JD_SIGNED_URL_EXPIRES_IN_SECONDS,
+                bucket,
+              ),
+            },
+            aiCallContext,
+          )
+        : await this.aiService.parseJobDescription({ raw_text: rawText }, aiCallContext);
       const classification = await this.classifierService.classify(parsedData);
 
       await store.updateJdItem(batchId, jdItemId, {
