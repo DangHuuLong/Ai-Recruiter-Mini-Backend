@@ -18,6 +18,7 @@ import { EmailModule } from './integrations/email/email.module';
 import { LlmProvidersModule } from './integrations/llm-providers/llm-providers.module';
 import { RedisModule } from './integrations/redis/redis.module';
 import { StorageModule } from './integrations/storage/storage.module';
+import { AiActivityFeedbackModule } from './modules/ai-activity-feedback/ai-activity-feedback.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthTokenModule } from './modules/auth/auth-token.module';
@@ -75,11 +76,13 @@ import { QueueModule } from './queue/queue.module';
     ScoringBatchesModule,
     PublicBatchesModule,
     AuditLogsModule,
+    AiActivityFeedbackModule,
   ],
 })
 export class AppModule implements NestModule {
-  // Nest hook: applies AnonymousSessionMiddleware to the public/batches routes so unauthenticated callers get a session cookie.
+  // Nest hook: applies AnonymousSessionMiddleware to the public/batches and public/feedback routes
+  // so unauthenticated callers get a session cookie (feedback's rate-limit guard needs it too).
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(AnonymousSessionMiddleware).forRoutes('public/batches');
+    consumer.apply(AnonymousSessionMiddleware).forRoutes('public/batches', 'public/feedback');
   }
 }

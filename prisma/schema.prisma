@@ -112,6 +112,18 @@ enum AiCallTier {
   PUBLIC
 }
 
+enum FeedbackAccuracy {
+  ACCURATE
+  OK
+  INACCURATE
+}
+
+enum FeedbackSpeed {
+  FAST
+  NORMAL
+  SLOW
+}
+
 // ─────────────────────────────────────────────
 // ORGANIZATION (multi-tenant root)
 // ─────────────────────────────────────────────
@@ -125,16 +137,17 @@ model Organization {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  users             User[]
-  candidates        Candidate[]
-  jobDescriptions   JobDescription[]
-  applications      Application[]
-  evaluations       Evaluation[]
-  evaluationConfigs EvaluationConfig[]
-  fileAssets        FileAsset[]
-  scoringBatches    ScoringBatch[]
-  auditLogs         AuditLog[]
-  aiActivityLogs    AiActivityLog[]
+  users              User[]
+  candidates         Candidate[]
+  jobDescriptions    JobDescription[]
+  applications       Application[]
+  evaluations        Evaluation[]
+  evaluationConfigs  EvaluationConfig[]
+  fileAssets         FileAsset[]
+  scoringBatches     ScoringBatch[]
+  auditLogs          AuditLog[]
+  aiActivityLogs     AiActivityLog[]
+  aiActivityFeedback AiActivityFeedback[]
 
   @@index([slug])
 }
@@ -881,4 +894,28 @@ model AiActivityLog {
   @@index([batchId])
   @@index([resumeId])
   @@index([jobDescriptionId])
+}
+
+model AiActivityFeedback {
+  id               String           @id @default(cuid())
+  tier             AiCallTier
+  accuracy         FeedbackAccuracy
+  reasons          String[]
+  speed            FeedbackSpeed
+  comment          String?
+  organizationId   String?
+  batchId          String?
+  evaluationId     String?
+  resumeId         String?
+  jobDescriptionId String?
+  createdAt        DateTime         @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([tier])
+  @@index([accuracy])
+  @@index([organizationId])
+  @@index([batchId])
+  @@index([evaluationId])
+  @@index([createdAt])
 }
